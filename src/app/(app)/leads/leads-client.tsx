@@ -25,7 +25,7 @@ export function LeadsClient() {
   const [industry, setIndustry] = useState("all");
   const [service, setService] = useState("all");
   const [followupFilter, setFollowupFilter] = useState<FollowupFilter>("all");
-  const [sortMode, setSortMode] = useState<SortMode>("created-desc");
+  const [sortMode, setSortMode] = useState<SortMode>("followup-asc");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -246,11 +246,15 @@ export function LeadsClient() {
                       <td className="px-3 py-4">
                         <div className="flex flex-col gap-1">
                           <div className={`${inputClasses} flex min-h-9 items-center rounded-xl bg-surface-soft px-2 text-xs text-muted`}>
-                            {formatDate(lead.nextFollowupDate, "No next follow-up")}
+                            {getNextFollowupLabel(lead)}
                           </div>
-                          <Badge tone="info">Auto</Badge>
+                          {lead.nextFollowupDate ? <Badge tone="info">Auto</Badge> : null}
+                          {!lead.nextFollowupDate ? (
+                            <Badge tone={getMissingNextFollowupTone(lead)}>
+                              {getMissingNextFollowupReason(lead)}
+                            </Badge>
+                          ) : null}
                           {isOverdue(lead.nextFollowupDate) ? <Badge tone="danger">Overdue</Badge> : null}
-                          {!lead.nextFollowupDate ? <Badge tone="muted">No follow-up date</Badge> : null}
                           {isToday(lead.nextFollowupDate) ? <Badge tone="success">Today</Badge> : null}
                         </div>
                       </td>
@@ -418,4 +422,27 @@ function formatOption(option: string) {
   if (option === "temperature") return "Temperature";
   if (option === "no-date") return "No next date";
   return option;
+}
+
+function getNextFollowupLabel(lead: Lead) {
+  if (lead.nextFollowupDate) return formatDate(lead.nextFollowupDate);
+  if (isClosedLead(lead)) return lead.leadStage;
+  if (!lead.firstContactDate) return "First contact needed";
+  return "Review schedule";
+}
+
+function getMissingNextFollowupReason(lead: Lead) {
+  if (isClosedLead(lead)) return "Closed lead";
+  if (!lead.firstContactDate) return "No contact date";
+  return "Needs follow-up date";
+}
+
+function getMissingNextFollowupTone(lead: Lead): "muted" | "danger" | "soon" {
+  if (isClosedLead(lead)) return "muted";
+  if (!lead.firstContactDate) return "soon";
+  return "danger";
+}
+
+function isClosedLead(lead: Lead) {
+  return ["Won", "Lost", "Rejected"].includes(lead.leadStage);
 }
