@@ -1,5 +1,13 @@
-import type { Followup, Lead, LeadStage, LeadTemperature } from "./types";
-import { isOverdue, isToday, startOfWeekIso, todayIso } from "./utils";
+import type {
+  Followup,
+  Lead,
+  LeadStage,
+  LeadTemperature,
+  PosterSlot,
+  StudioClient,
+  StudioProject,
+} from "./types";
+import { isOverdue, isToday, offsetDate, startOfWeekIso, todayIso } from "./utils";
 
 const terminalLeadStages: LeadStage[] = ["Won", "Lost", "Rejected"];
 
@@ -109,6 +117,76 @@ export function monthlyConversionRows(leads: Lead[]) {
   }, {});
 
   return Object.values(buckets).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+export function getOperationsKpis(
+  clients: StudioClient[],
+  projects: StudioProject[],
+  posterSlots: PosterSlot[],
+) {
+  const today = todayIso();
+  const renewalWindow = offsetDate(30);
+  const thisMonth = today.slice(0, 7);
+  const activeClients = clients.filter((client) => client.status !== "Closed");
+  const activeProjects = projects.filter((project) => !["Delivered", "On Hold"].includes(project.status));
+  const monthSlots = posterSlots.filter((slot) => slot.slotDate.startsWith(thisMonth));
+  const postedMonthSlots = monthSlots.filter((slot) => slot.status === "Posted");
+  const pendingApprovals = posterSlots.filter((slot) => ["Review", "Approved"].includes(slot.status)).length;
+  const renewalsNext30 = activeClients.filter(
+    (client) => client.renewalDate && client.renewalDate >= today && client.renewalDate <= renewalWindow,
+  ).length;
+  const monthlyRecurringRevenue = activeClients.reduce(
+    (sum, client) => sum + client.monthlyValue,
+    0,
+  );
+
+  return {
+    activeClients: activeClients.length,
+    activeProjects: activeProjects.length,
+    posterSlotsThisMonth: monthSlots.length,
+    postersPostedThisMonth: postedMonthSlots.length,
+    pendingApprovals,
+    renewalsNext30,
+    monthlyRecurringRevenue,
+  };
+}
+
+export function clientStatusChart(clients: StudioClient[]) {
+  return clients.reduce<Record<string, number>>((acc, client) => {
+    acc[client.status] = (acc[client.status] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+export function projectStatusChart(projects: StudioProject[]) {
+  return projects.reduce<Record<string, number>>((acc, project) => {
+    acc[project.status] = (acc[project.status] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+export function posterStatusChart(posterSlots: PosterSlot[]) {
+  return posterSlots.reduce<Record<string, number>>((acc, slot) => {
+    acc[slot.status] = (acc[slot.status] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+export function designerWorkloadChart(
+  projects: StudioProject[],
+  posterSlots: PosterSlot[],
+) {
+  return [...projects, ...posterSlots].reduce<Record<string, number>>((acc, item) => {
+    const designer = item.designer || "Unassigned";
+    acc[designer] = (acc[designer] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+export function renewalRows(clients: StudioClient[]) {
+  return [...clients]
+    .filter((client) => client.status !== "Closed" && Boolean(client.renewalDate))
+    .sort((a, b) => a.renewalDate.localeCompare(b.renewalDate));
 }
 
 function isTerminalLead(lead: Pick<Lead, "leadStage">) {

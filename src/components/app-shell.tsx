@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 label={item.label}
                 active={pathname === item.href}
                 icon={iconMap[item.label]}
-                trailing={<Badge tone="soon">Soon</Badge>}
+                trailing={item.status === "Coming Soon" ? <Badge tone="soon">Soon</Badge> : undefined}
               />
             ))}
           </SidebarSection>

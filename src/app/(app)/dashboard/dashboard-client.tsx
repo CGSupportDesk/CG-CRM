@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarClock, Flame, IndianRupee, Target, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarClock, CheckSquare, Flame, FolderKanban, IndianRupee, Target, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { DailyBriefPanel } from "@/components/ai-panels";
 import { BarList, DonutChart, Sparkline } from "@/components/charts";
@@ -13,6 +13,7 @@ import {
   followupDueChart,
   getFollowupTasks,
   getKpis,
+  getOperationsKpis,
   industryChart,
   leadStageChart,
   leadTemperatureChart,
@@ -21,8 +22,9 @@ import {
 import { formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 export function DashboardClient() {
-  const { leads, followups, activityLogs, loading } = useCRM();
+  const { leads, followups, activityLogs, clients, projects, posterSlots, loading } = useCRM();
   const kpis = getKpis(leads);
+  const operationsKpis = getOperationsKpis(clients, projects, posterSlots);
   const followupTasks = getFollowupTasks(leads, followups);
   const todaysFollowups = followupTasks.filter(({ lead }) => isToday(lead.nextFollowupDate));
   const overdueFollowups = followupTasks.filter(({ lead }) => isOverdue(lead.nextFollowupDate));
@@ -69,6 +71,30 @@ export function DashboardClient() {
         <MiniStat label="Rejected Leads" value={kpis.rejectedLeads} />
         <MiniStat label="Won / Lost Leads" value={`${kpis.wonLeads} / ${kpis.lostLeads}`} />
       </div>
+
+      <Panel className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">CG Studio operations</h2>
+            <p className="mt-1 text-sm text-muted">
+              Client, project, poster, approval, renewal, and recurring value pulse.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/clients" className={buttonClasses("secondary", "sm")}>Clients</Link>
+            <Link href="/projects" className={buttonClasses("secondary", "sm")}>Projects</Link>
+            <Link href="/poster-calendar" className={buttonClasses("secondary", "sm")}>Poster Calendar</Link>
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+          <OperationsMetric label="Active Clients" value={operationsKpis.activeClients} icon={Users} />
+          <OperationsMetric label="Active Projects" value={operationsKpis.activeProjects} icon={FolderKanban} />
+          <OperationsMetric label="Poster Slots" value={operationsKpis.posterSlotsThisMonth} icon={CalendarClock} />
+          <OperationsMetric label="Posted This Month" value={operationsKpis.postersPostedThisMonth} icon={CheckSquare} />
+          <OperationsMetric label="Pending Approvals" value={operationsKpis.pendingApprovals} icon={TrendingUp} />
+          <OperationsMetric label="Monthly Value" value={formatCurrency(operationsKpis.monthlyRecurringRevenue)} icon={IndianRupee} />
+        </div>
+      </Panel>
 
       <DailyBriefPanel />
 
@@ -269,6 +295,24 @@ function MiniStat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-[18px] border border-border bg-white/70 p-4">
       <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function OperationsMetric({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="rounded-[18px] border border-border bg-surface-soft p-4">
+      <Icon className="h-4 w-4 text-accent-dark" />
+      <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-2 font-mono text-2xl font-bold">{value}</p>
     </div>
   );

@@ -15,7 +15,7 @@ export function ComingSoonPage({
 }) {
   const message = wing
     ? "This wing is coming soon. Growth Engine Phase 1 is currently focused on CG Studio Lead Tracker."
-    : "This module is coming soon in Phase 2. Lead Tracker, Follow-ups, Dashboard, Reports, and CSV Import are currently active.";
+    : "This module is coming soon. Leads, Follow-ups, Dashboard, Reports, CSV Import, Clients, Projects, Poster Calendar, and Settings are currently active.";
 
   return (
     <div className="space-y-6">

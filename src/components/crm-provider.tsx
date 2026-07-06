@@ -16,6 +16,10 @@ import type {
   ImportPreviewRow,
   ImportSummary,
   LeadDraft,
+  PosterSlotDraft,
+  StudioClientDraft,
+  StudioProjectDraft,
+  StudioSettingDraft,
 } from "@/lib/types";
 
 interface CRMContextValue extends CRMState {
@@ -28,6 +32,19 @@ interface CRMContextValue extends CRMState {
   addFollowup: (followup: FollowupDraft) => Promise<string>;
   updateFollowup: (id: string, changes: Partial<FollowupDraft>) => Promise<void>;
   importLegacyRows: (rows: ImportPreviewRow[]) => Promise<ImportSummary>;
+  addClient: (client: StudioClientDraft) => Promise<string>;
+  updateClient: (id: string, changes: Partial<StudioClientDraft>) => Promise<void>;
+  deleteClient: (id: string) => Promise<void>;
+  addProject: (project: StudioProjectDraft) => Promise<string>;
+  updateProject: (id: string, changes: Partial<StudioProjectDraft>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  addPosterSlot: (posterSlot: PosterSlotDraft) => Promise<string>;
+  updatePosterSlot: (id: string, changes: Partial<PosterSlotDraft>) => Promise<void>;
+  deletePosterSlot: (id: string) => Promise<void>;
+  generatePosterSlots: (projectId: string, month: string) => Promise<number>;
+  addStudioSetting: (setting: StudioSettingDraft) => Promise<string>;
+  updateStudioSetting: (id: string, changes: Partial<StudioSettingDraft>) => Promise<void>;
+  deleteStudioSetting: (id: string) => Promise<void>;
   resetDemoData: () => Promise<void>;
 }
 
@@ -35,6 +52,7 @@ type CrmMutationResponse = {
   id?: string;
   state?: CRMState;
   summary?: ImportSummary;
+  generated?: number;
 };
 
 const CRMContext = createContext<CRMContextValue | null>(null);
@@ -44,6 +62,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     leads: [],
     followups: [],
     activityLogs: [],
+    clients: [],
+    projects: [],
+    posterSlots: [],
+    settings: [],
   }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -147,6 +169,102 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  const addClient = useCallback(
+    async (client: StudioClientDraft) => {
+      const result = await mutate({ action: "addClient", client });
+      return result.id || "";
+    },
+    [mutate],
+  );
+
+  const updateClient = useCallback(
+    async (id: string, changes: Partial<StudioClientDraft>) => {
+      await mutate({ action: "updateClient", id, changes });
+    },
+    [mutate],
+  );
+
+  const deleteClient = useCallback(
+    async (id: string) => {
+      await mutate({ action: "deleteClient", id });
+    },
+    [mutate],
+  );
+
+  const addProject = useCallback(
+    async (project: StudioProjectDraft) => {
+      const result = await mutate({ action: "addProject", project });
+      return result.id || "";
+    },
+    [mutate],
+  );
+
+  const updateProject = useCallback(
+    async (id: string, changes: Partial<StudioProjectDraft>) => {
+      await mutate({ action: "updateProject", id, changes });
+    },
+    [mutate],
+  );
+
+  const deleteProject = useCallback(
+    async (id: string) => {
+      await mutate({ action: "deleteProject", id });
+    },
+    [mutate],
+  );
+
+  const addPosterSlot = useCallback(
+    async (posterSlot: PosterSlotDraft) => {
+      const result = await mutate({ action: "addPosterSlot", posterSlot });
+      return result.id || "";
+    },
+    [mutate],
+  );
+
+  const updatePosterSlot = useCallback(
+    async (id: string, changes: Partial<PosterSlotDraft>) => {
+      await mutate({ action: "updatePosterSlot", id, changes });
+    },
+    [mutate],
+  );
+
+  const deletePosterSlot = useCallback(
+    async (id: string) => {
+      await mutate({ action: "deletePosterSlot", id });
+    },
+    [mutate],
+  );
+
+  const generatePosterSlots = useCallback(
+    async (projectId: string, month: string) => {
+      const result = await mutate({ action: "generatePosterSlots", projectId, month });
+      return result.generated || 0;
+    },
+    [mutate],
+  );
+
+  const addStudioSetting = useCallback(
+    async (setting: StudioSettingDraft) => {
+      const result = await mutate({ action: "addStudioSetting", setting });
+      return result.id || "";
+    },
+    [mutate],
+  );
+
+  const updateStudioSetting = useCallback(
+    async (id: string, changes: Partial<StudioSettingDraft>) => {
+      await mutate({ action: "updateStudioSetting", id, changes });
+    },
+    [mutate],
+  );
+
+  const deleteStudioSetting = useCallback(
+    async (id: string) => {
+      await mutate({ action: "deleteStudioSetting", id });
+    },
+    [mutate],
+  );
+
   const resetDemoData = useCallback(async () => {
     await mutate({ action: "resetData" });
   }, [mutate]);
@@ -163,20 +281,46 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       addFollowup,
       updateFollowup,
       importLegacyRows,
+      addClient,
+      updateClient,
+      deleteClient,
+      addProject,
+      updateProject,
+      deleteProject,
+      addPosterSlot,
+      updatePosterSlot,
+      deletePosterSlot,
+      generatePosterSlots,
+      addStudioSetting,
+      updateStudioSetting,
+      deleteStudioSetting,
       resetDemoData,
     }),
     [
+      addClient,
       addFollowup,
       addLead,
+      addPosterSlot,
+      addProject,
+      addStudioSetting,
       archiveLead,
+      deleteClient,
       deleteLead,
+      deletePosterSlot,
+      deleteProject,
+      deleteStudioSetting,
+      generatePosterSlots,
       importLegacyRows,
       loading,
       resetDemoData,
       saving,
       state,
+      updateClient,
       updateFollowup,
       updateLead,
+      updatePosterSlot,
+      updateProject,
+      updateStudioSetting,
     ],
   );
 

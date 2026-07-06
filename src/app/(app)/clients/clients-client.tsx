@@ -1,0 +1,324 @@
+"use client";
+
+import { Edit3, Plus, Trash2, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useCRM } from "@/components/crm-provider";
+import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
+import { assigneeOptions, clientStatusOptions, serviceInterestOptions } from "@/lib/constants";
+import type { ClientStatus, StudioClient, StudioClientDraft } from "@/lib/types";
+import { formatCurrency, formatDate, getDisplayName, todayIso } from "@/lib/utils";
+
+export function ClientsClient() {
+  const { clients, leads, projects, loading, saving, addClient, updateClient, deleteClient } = useCRM();
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<ClientStatus | "all">("all");
+  const [editingClient, setEditingClient] = useState<StudioClient | null>(null);
+  const [addingClient, setAddingClient] = useState(false);
+
+  const projectCountByClient = useMemo(
+    () =>
+      projects.reduce<Record<string, number>>((acc, project) => {
+        acc[project.clientId] = (acc[project.clientId] || 0) + 1;
+        return acc;
+      }, {}),
+    [projects],
+  );
+  const wonLeadOptions = useMemo(
+    () => leads.filter((lead) => lead.leadStage === "Won"),
+    [leads],
+  );
+  const filteredClients = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    return clients
+      .filter((client) => status === "all" || client.status === status)
+      .filter((client) => {
+        const haystack = [
+          client.clientName,
+          client.contactPerson,
+          client.phone,
+          client.industry,
+          client.packageName,
+        ].join(" ").toLowerCase();
+        return !text || haystack.includes(text);
+      });
+  }, [clients, query, status]);
+
+  async function saveClient(draft: StudioClientDraft) {
+    if (editingClient) {
+      await updateClient(editingClient.id, draft);
+      setEditingClient(null);
+    } else {
+      await addClient(draft);
+      setAddingClient(false);
+    }
+  }
+
+  function removeClient(client: StudioClient) {
+    if (window.confirm(`Delete client ${client.clientName}? Projects and poster slots for this client will also be deleted.`)) {
+      void deleteClient(client.id);
+    }
+  }
+
+  if (loading) {
+    return <EmptyState title="Loading clients" description="Preparing active CG Studio clients." />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Clients"
+        description="Manage active CG Studio clients converted from won leads, packages, renewals, and account ownership."
+        action={
+          <Button onClick={() => setAddingClient(true)}>
+            <Plus className="h-4 w-4" />
+            Add Client
+          </Button>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ClientMetric label="Total Clients" value={clients.length} />
+        <ClientMetric label="Active" value={clients.filter((client) => client.status === "Active").length} />
+        <ClientMetric label="Renewal Due" value={clients.filter((client) => client.status === "Renewal Due").length} />
+        <ClientMetric
+          label="Monthly Value"
+          value={formatCurrency(clients.filter((client) => client.status !== "Closed").reduce((sum, client) => sum + client.monthlyValue, 0))}
+        />
+      </div>
+
+      <Panel className="space-y-5">
+        <div className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-end">
+          <FieldLabel label="Search">
+            <input
+              className={inputClasses}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Client, contact, package"
+            />
+          </FieldLabel>
+          <FieldLabel label="Status">
+            <select
+              className={inputClasses}
+              value={status}
+              onChange={(event) => setStatus(event.target.value as ClientStatus | "all")}
+            >
+              <option value="all">All</option>
+              {clientStatusOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </FieldLabel>
+          {saving ? <Badge tone="info">Saving...</Badge> : null}
+        </div>
+
+        {filteredClients.length ? (
+          <div className="overflow-hidden rounded-[20px] border border-border">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
+                  <tr>
+                    <th className="px-4 py-3">Client</th>
+                    <th className="px-4 py-3">Package</th>
+                    <th className="px-4 py-3">Owner</th>
+                    <th className="px-4 py-3">Renewal</th>
+                    <th className="px-4 py-3">Projects</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border bg-white">
+                  {filteredClients.map((client) => (
+                    <tr key={client.id}>
+                      <td className="px-4 py-4">
+                        <p className="font-semibold">{client.clientName}</p>
+                        <p className="mt-1 text-xs text-muted">{client.contactPerson || "No contact"} - {client.phone || "No phone"}</p>
+                        <p className="mt-1 text-xs text-muted">{client.industry || "Industry not set"}</p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="font-semibold">{client.packageName}</p>
+                        <p className="text-xs text-muted">{formatCurrency(client.monthlyValue)}</p>
+                      </td>
+                      <td className="px-4 py-4">{client.owner}</td>
+                      <td className="px-4 py-4">{formatDate(client.renewalDate)}</td>
+                      <td className="px-4 py-4 font-mono font-bold">{projectCountByClient[client.id] || 0}</td>
+                      <td className="px-4 py-4"><Badge>{client.status}</Badge></td>
+                      <td className="px-4 py-4">
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="icon" title="Edit client" onClick={() => setEditingClient(client)}>
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="danger" size="icon" title="Delete client" onClick={() => removeClient(client)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No clients yet"
+            description="Mark a lead as Won to create a client automatically, or add a client manually."
+            action={<Button onClick={() => setAddingClient(true)}>Add Client</Button>}
+          />
+        )}
+      </Panel>
+
+      {addingClient || editingClient ? (
+        <Modal
+          title={editingClient ? "Edit client" : "Add client"}
+          description="Won leads become clients automatically; this form is for cleanup and manual additions."
+          onClose={() => {
+            setAddingClient(false);
+            setEditingClient(null);
+          }}
+          wide
+        >
+          <ClientForm
+            client={editingClient || undefined}
+            wonLeadOptions={wonLeadOptions}
+            onSubmit={saveClient}
+            onCancel={() => {
+              setAddingClient(false);
+              setEditingClient(null);
+            }}
+          />
+        </Modal>
+      ) : null}
+    </div>
+  );
+}
+
+function ClientForm({
+  client,
+  wonLeadOptions,
+  onSubmit,
+  onCancel,
+}: {
+  client?: StudioClient;
+  wonLeadOptions: ReturnType<typeof useCRM>["leads"];
+  onSubmit: (draft: StudioClientDraft) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const firstLead = wonLeadOptions.find((lead) => lead.id === client?.leadId);
+  const [draft, setDraft] = useState<StudioClientDraft>(() => ({
+    leadId: client?.leadId || "",
+    clientName: client?.clientName || (firstLead ? getDisplayName(firstLead) : ""),
+    contactPerson: client?.contactPerson || firstLead?.contactPerson || "",
+    phone: client?.phone || firstLead?.phone || "",
+    email: client?.email || firstLead?.email || "",
+    industry: client?.industry || firstLead?.industry || "",
+    location: client?.location || firstLead?.location || "",
+    packageName: client?.packageName || firstLead?.serviceInterest || "30 Poster Package",
+    monthlyValue: client?.monthlyValue || firstLead?.expectedValue || 5000,
+    owner: client?.owner || firstLead?.assignedTo || "Naveen",
+    status: client?.status || "Active",
+    startDate: client?.startDate || todayIso(),
+    renewalDate: client?.renewalDate || "",
+    notes: client?.notes || firstLead?.remarks || "",
+  }));
+
+  function update<K extends keyof StudioClientDraft>(key: K, value: StudioClientDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function fillFromLead(leadId: string) {
+    const lead = wonLeadOptions.find((item) => item.id === leadId);
+    update("leadId", leadId);
+    if (!lead) return;
+    setDraft((current) => ({
+      ...current,
+      leadId,
+      clientName: getDisplayName(lead),
+      contactPerson: lead.contactPerson || lead.leadName,
+      phone: lead.phone,
+      email: lead.email,
+      industry: lead.industry,
+      location: lead.location,
+      packageName: lead.serviceInterest,
+      monthlyValue: lead.expectedValue,
+      owner: lead.assignedTo || current.owner,
+      notes: lead.remarks,
+    }));
+  }
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit(draft);
+      }}
+    >
+      <div className="grid gap-4 md:grid-cols-3">
+        <FieldLabel label="Won Lead">
+          <select className={inputClasses} value={draft.leadId} onChange={(event) => fillFromLead(event.target.value)}>
+            <option value="">Manual client</option>
+            {wonLeadOptions.map((lead) => (
+              <option key={lead.id} value={lead.id}>{getDisplayName(lead)}</option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Client Name">
+          <input className={inputClasses} value={draft.clientName} onChange={(event) => update("clientName", event.target.value)} required />
+        </FieldLabel>
+        <FieldLabel label="Contact Person">
+          <input className={inputClasses} value={draft.contactPerson} onChange={(event) => update("contactPerson", event.target.value)} />
+        </FieldLabel>
+        <FieldLabel label="Phone">
+          <input className={inputClasses} value={draft.phone} onChange={(event) => update("phone", event.target.value)} />
+        </FieldLabel>
+        <FieldLabel label="Email">
+          <input className={inputClasses} value={draft.email} onChange={(event) => update("email", event.target.value)} />
+        </FieldLabel>
+        <FieldLabel label="Industry">
+          <input className={inputClasses} value={draft.industry} onChange={(event) => update("industry", event.target.value)} />
+        </FieldLabel>
+        <FieldLabel label="Package">
+          <select className={inputClasses} value={draft.packageName} onChange={(event) => update("packageName", event.target.value as StudioClientDraft["packageName"])}>
+            {serviceInterestOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Monthly Value">
+          <input className={inputClasses} type="number" value={draft.monthlyValue} onChange={(event) => update("monthlyValue", Number(event.target.value))} />
+        </FieldLabel>
+        <FieldLabel label="Owner">
+          <select className={inputClasses} value={draft.owner} onChange={(event) => update("owner", event.target.value)}>
+            {assigneeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Status">
+          <select className={inputClasses} value={draft.status} onChange={(event) => update("status", event.target.value as ClientStatus)}>
+            {clientStatusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Start Date">
+          <input className={inputClasses} type="date" value={draft.startDate} onChange={(event) => update("startDate", event.target.value)} />
+        </FieldLabel>
+        <FieldLabel label="Renewal Date">
+          <input className={inputClasses} type="date" value={draft.renewalDate} onChange={(event) => update("renewalDate", event.target.value)} />
+        </FieldLabel>
+      </div>
+      <FieldLabel label="Notes">
+        <textarea className={`${inputClasses} min-h-28 py-3`} value={draft.notes} onChange={(event) => update("notes", event.target.value)} />
+      </FieldLabel>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button type="submit">Save Client</Button>
+      </div>
+    </form>
+  );
+}
+
+function ClientMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <Panel className="p-5">
+      <Users className="h-5 w-5 text-accent-dark" />
+      <p className="mt-5 text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
+      <p className="mt-2 font-mono text-3xl font-bold tracking-tight">{value}</p>
+    </Panel>
+  );
+}

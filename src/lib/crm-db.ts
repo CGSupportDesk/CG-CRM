@@ -19,8 +19,16 @@ import type {
   ImportSummary,
   Lead,
   LeadDraft,
+  PosterSlot,
+  PosterSlotDraft,
+  StudioClient,
+  StudioClientDraft,
+  StudioProject,
+  StudioProjectDraft,
+  StudioSetting,
+  StudioSettingDraft,
 } from "@/lib/types";
-import { createId, dateOnlyText } from "@/lib/utils";
+import { createId, dateOnlyText, offsetDate, todayIso } from "@/lib/utils";
 
 type SqlClient = ReturnType<typeof neon>;
 
@@ -28,6 +36,8 @@ let sqlClient: SqlClient | null = null;
 let schemaPromise: Promise<void> | null = null;
 let scheduleRefreshPromise: Promise<void> | null = null;
 let leadDataNormalizationPromise: Promise<void> | null = null;
+let wonLeadClientSyncPromise: Promise<void> | null = null;
+let settingsSeedPromise: Promise<void> | null = null;
 
 export function hasDatabaseUrl() {
   return Boolean(getDatabaseUrl());
@@ -50,8 +60,10 @@ function getSql() {
 export async function getCrmState() {
   await ensureCrmSchema();
   await seedDatabaseIfEmpty();
+  await seedSettingsIfEmptyOnce();
   await normalizeAllLeadDataOnce();
   await refreshAllFollowupSchedulesOnce();
+  await syncWonLeadsToClientsOnce();
   return readCrmState();
 }
 
@@ -94,6 +106,9 @@ export async function updateLeadRecord(id: string, changes: Partial<LeadDraft>) 
   const logs = buildChangeLogs(existing, scheduledUpdated);
 
   await updateLead(scheduledUpdated);
+  if (scheduledUpdated.leadStage === "Won") {
+    await ensureClientForWonLead(scheduledUpdated);
+  }
   await insertLogs(logs);
 
   return { state: await readCrmState() };
@@ -116,6 +131,142 @@ export async function deleteLeadRecord(id: string) {
   await ensureCrmSchema();
   const sql = getSql();
   await sql`delete from leads where id = ${id}`;
+  return { state: await readCrmState(sql) };
+}
+
+export async function addClientRecord(draft: StudioClientDraft) {
+  await ensureCrmSchema();
+
+  const client = buildClientFromDraft(draft);
+  await insertClient(client);
+
+  return { id: client.id, state: await readCrmState() };
+}
+
+export async function updateClientRecord(id: string, changes: Partial<StudioClientDraft>) {
+  await ensureCrmSchema();
+
+  const existing = await getClientById(id);
+  if (!existing) return { state: await readCrmState() };
+
+  await updateClient({
+    ...existing,
+    ...changes,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return { state: await readCrmState() };
+}
+
+export async function deleteClientRecord(id: string) {
+  await ensureCrmSchema();
+  const sql = getSql();
+  await sql`delete from clients where id = ${id}`;
+  return { state: await readCrmState(sql) };
+}
+
+export async function addProjectRecord(draft: StudioProjectDraft) {
+  await ensureCrmSchema();
+
+  const project = buildProjectFromDraft(draft);
+  await insertProject(project);
+
+  return { id: project.id, state: await readCrmState() };
+}
+
+export async function updateProjectRecord(id: string, changes: Partial<StudioProjectDraft>) {
+  await ensureCrmSchema();
+
+  const existing = await getProjectById(id);
+  if (!existing) return { state: await readCrmState() };
+
+  await updateProject({
+    ...existing,
+    ...changes,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return { state: await readCrmState() };
+}
+
+export async function deleteProjectRecord(id: string) {
+  await ensureCrmSchema();
+  const sql = getSql();
+  await sql`delete from projects where id = ${id}`;
+  return { state: await readCrmState(sql) };
+}
+
+export async function addPosterSlotRecord(draft: PosterSlotDraft) {
+  await ensureCrmSchema();
+
+  const slot = buildPosterSlotFromDraft(draft);
+  await insertPosterSlots([slot]);
+
+  return { id: slot.id, state: await readCrmState() };
+}
+
+export async function updatePosterSlotRecord(id: string, changes: Partial<PosterSlotDraft>) {
+  await ensureCrmSchema();
+
+  const existing = await getPosterSlotById(id);
+  if (!existing) return { state: await readCrmState() };
+
+  await updatePosterSlot({
+    ...existing,
+    ...changes,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return { state: await readCrmState() };
+}
+
+export async function deletePosterSlotRecord(id: string) {
+  await ensureCrmSchema();
+  const sql = getSql();
+  await sql`delete from poster_slots where id = ${id}`;
+  return { state: await readCrmState(sql) };
+}
+
+export async function generatePosterSlotsRecord(projectId: string, month: string) {
+  await ensureCrmSchema();
+
+  const project = await getProjectById(projectId);
+  if (!project) return { state: await readCrmState() };
+
+  const slots = await buildGeneratedPosterSlots(project, month);
+  await insertPosterSlots(slots);
+
+  return { generated: slots.length, state: await readCrmState() };
+}
+
+export async function addStudioSettingRecord(draft: StudioSettingDraft) {
+  await ensureCrmSchema();
+
+  const setting = buildSettingFromDraft(draft);
+  await insertSettings([setting]);
+
+  return { id: setting.id, state: await readCrmState() };
+}
+
+export async function updateStudioSettingRecord(id: string, changes: Partial<StudioSettingDraft>) {
+  await ensureCrmSchema();
+
+  const existing = await getSettingById(id);
+  if (!existing) return { state: await readCrmState() };
+
+  await updateSetting({
+    ...existing,
+    ...changes,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return { state: await readCrmState() };
+}
+
+export async function deleteStudioSettingRecord(id: string) {
+  await ensureCrmSchema();
+  const sql = getSql();
+  await sql`delete from studio_settings where id = ${id}`;
   return { state: await readCrmState(sql) };
 }
 
@@ -151,6 +302,9 @@ export async function addFollowupRecord(draft: FollowupDraft) {
       updatedAt: new Date().toISOString(),
     };
     await updateLead(updatedLead);
+    if (updatedLead.leadStage === "Won") {
+      await ensureClientForWonLead(updatedLead);
+    }
   }
 
   await insertLogs([
@@ -253,8 +407,12 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
 export async function resetCrmFromPrivateSeed() {
   await ensureCrmSchema();
   const sql = getSql();
+  await sql`delete from poster_slots`;
+  await sql`delete from projects`;
+  await sql`delete from clients`;
   await sql`delete from leads`;
   await seedDatabaseIfEmpty();
+  await seedSettingsIfEmptyOnce();
   return readCrmState(sql);
 }
 
@@ -321,10 +479,89 @@ async function createSchema() {
     )
   `;
 
+  await sql`
+    create table if not exists clients (
+      id text primary key,
+      lead_id text unique references leads(id) on delete set null,
+      client_name text not null default '',
+      contact_person text not null default '',
+      phone text not null default '',
+      email text not null default '',
+      industry text not null default '',
+      location text not null default '',
+      package_name text not null default '30 Poster Package',
+      monthly_value numeric(12, 2) not null default 0,
+      owner text not null default 'Naveen',
+      status text not null default 'Active',
+      start_date date,
+      renewal_date date,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists projects (
+      id text primary key,
+      client_id text not null references clients(id) on delete cascade,
+      project_name text not null default '',
+      project_type text not null default 'Poster Package',
+      status text not null default 'Planning',
+      designer text not null default 'Naveen',
+      monthly_poster_target integer not null default 0,
+      posters_completed integer not null default 0,
+      due_date date,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists poster_slots (
+      id text primary key,
+      project_id text not null references projects(id) on delete cascade,
+      client_id text not null references clients(id) on delete cascade,
+      title text not null default '',
+      slot_date date not null,
+      designer text not null default 'Naveen',
+      status text not null default 'Planned',
+      caption_required boolean not null default true,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists studio_settings (
+      id text primary key,
+      category text not null,
+      label text not null,
+      value text not null default '',
+      is_active boolean not null default true,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+
   await sql`create index if not exists leads_stage_idx on leads (lead_stage)`;
   await sql`create index if not exists leads_temperature_idx on leads (lead_temperature)`;
   await sql`create index if not exists leads_next_followup_idx on leads (next_followup_date)`;
   await sql`create index if not exists followups_lead_date_idx on followups (lead_id, followup_date desc)`;
+  await sql`create index if not exists clients_lead_idx on clients (lead_id)`;
+  await sql`create index if not exists clients_status_idx on clients (status)`;
+  await sql`create index if not exists clients_renewal_idx on clients (renewal_date)`;
+  await sql`create index if not exists projects_client_idx on projects (client_id)`;
+  await sql`create index if not exists projects_status_idx on projects (status)`;
+  await sql`create index if not exists projects_due_idx on projects (due_date)`;
+  await sql`create index if not exists poster_slots_project_idx on poster_slots (project_id)`;
+  await sql`create index if not exists poster_slots_client_idx on poster_slots (client_id)`;
+  await sql`create index if not exists poster_slots_date_idx on poster_slots (slot_date)`;
+  await sql`create index if not exists poster_slots_status_idx on poster_slots (status)`;
+  await sql`create index if not exists studio_settings_category_idx on studio_settings (category)`;
 }
 
 async function seedDatabaseIfEmpty() {
@@ -346,11 +583,19 @@ async function seedDatabaseIfEmpty() {
 }
 
 async function readCrmState(sql = getSql()): Promise<CRMState> {
-  const [leadRows, followupRows, activityRows] = (await Promise.all([
+  const [leadRows, followupRows, activityRows, clientRows, projectRows, posterRows, settingRows] = (await Promise.all([
     sql`select * from leads order by created_at desc`,
     sql`select * from followups order by created_at desc`,
     sql`select * from activity_logs order by created_at desc`,
+    sql`select * from clients order by created_at desc`,
+    sql`select * from projects order by created_at desc`,
+    sql`select * from poster_slots order by slot_date asc, created_at asc`,
+    sql`select * from studio_settings order by category asc, label asc`,
   ])) as [
+    Array<Record<string, unknown>>,
+    Array<Record<string, unknown>>,
+    Array<Record<string, unknown>>,
+    Array<Record<string, unknown>>,
     Array<Record<string, unknown>>,
     Array<Record<string, unknown>>,
     Array<Record<string, unknown>>,
@@ -360,6 +605,10 @@ async function readCrmState(sql = getSql()): Promise<CRMState> {
     leads: leadRows.map(mapLead),
     followups: followupRows.map(mapFollowup),
     activityLogs: activityRows.map(mapActivityLog),
+    clients: clientRows.map(mapClient),
+    projects: projectRows.map(mapProject),
+    posterSlots: posterRows.map(mapPosterSlot),
+    settings: settingRows.map(mapSetting),
   };
 }
 
@@ -382,6 +631,38 @@ async function getFollowupsByLeadId(leadId: string) {
   return rows.map(mapFollowup);
 }
 
+async function getClientById(id: string) {
+  const sql = getSql();
+  const rows = (await sql`select * from clients where id = ${id} limit 1`) as Array<
+    Record<string, unknown>
+  >;
+  return rows[0] ? mapClient(rows[0]) : null;
+}
+
+async function getProjectById(id: string) {
+  const sql = getSql();
+  const rows = (await sql`select * from projects where id = ${id} limit 1`) as Array<
+    Record<string, unknown>
+  >;
+  return rows[0] ? mapProject(rows[0]) : null;
+}
+
+async function getPosterSlotById(id: string) {
+  const sql = getSql();
+  const rows = (await sql`select * from poster_slots where id = ${id} limit 1`) as Array<
+    Record<string, unknown>
+  >;
+  return rows[0] ? mapPosterSlot(rows[0]) : null;
+}
+
+async function getSettingById(id: string) {
+  const sql = getSql();
+  const rows = (await sql`select * from studio_settings where id = ${id} limit 1`) as Array<
+    Record<string, unknown>
+  >;
+  return rows[0] ? mapSetting(rows[0]) : null;
+}
+
 async function refreshAllFollowupSchedules() {
   const sql = getSql();
   const [leadRows, followupRows] = (await Promise.all([
@@ -398,8 +679,11 @@ async function refreshAllFollowupSchedules() {
   });
 
   for (const lead of leads) {
+    const leadFollowups = followupsByLead.get(lead.id) || [];
     await writeScheduleChanges(
-      applyScheduleToLeadAndFollowups(lead, followupsByLead.get(lead.id) || []),
+      applyScheduleToLeadAndFollowups(lead, leadFollowups),
+      lead,
+      leadFollowups,
     );
   }
 }
@@ -443,12 +727,134 @@ async function normalizeAllLeadDataOnce() {
   return leadDataNormalizationPromise;
 }
 
+async function seedSettingsIfEmpty() {
+  const sql = getSql();
+  const [{ count }] = (await sql`select count(*)::int as count from studio_settings`) as Array<{
+    count: number;
+  }>;
+  if (Number(count) > 0) return;
+
+  await insertSettings(defaultStudioSettings());
+}
+
+async function seedSettingsIfEmptyOnce() {
+  settingsSeedPromise ??= seedSettingsIfEmpty().catch((error) => {
+    settingsSeedPromise = null;
+    throw error;
+  });
+
+  return settingsSeedPromise;
+}
+
+async function syncWonLeadsToClients() {
+  const sql = getSql();
+  const rows = (await sql`select * from leads where lead_stage = 'Won'`) as Array<
+    Record<string, unknown>
+  >;
+  const wonLeads = rows.map(mapLead);
+
+  for (const lead of wonLeads) {
+    await ensureClientForWonLead(lead);
+  }
+}
+
+async function syncWonLeadsToClientsOnce() {
+  wonLeadClientSyncPromise ??= syncWonLeadsToClients().catch((error) => {
+    wonLeadClientSyncPromise = null;
+    throw error;
+  });
+
+  return wonLeadClientSyncPromise;
+}
+
+async function ensureClientForWonLead(lead: Lead) {
+  const sql = getSql();
+  const rows = (await sql`select * from clients where lead_id = ${lead.id} limit 1`) as Array<
+    Record<string, unknown>
+  >;
+  const existing = rows[0] ? mapClient(rows[0]) : null;
+  const clientDraft = clientDraftFromLead(lead);
+
+  if (existing) {
+    const updatedClient: StudioClient = {
+      ...existing,
+      ...clientDraft,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    await updateClient(updatedClient);
+    await ensureStarterProjectForClient(updatedClient);
+    return updatedClient;
+  }
+
+  const client = buildClientFromDraft(clientDraft);
+  await insertClient(client);
+  await insertLogs([buildLog(lead.id, "Client created from won lead", "", client.clientName)]);
+  await ensureStarterProjectForClient(client);
+  return client;
+}
+
+async function ensureStarterProjectForClient(client: StudioClient) {
+  const sql = getSql();
+  const rows = (await sql`select count(*)::int as count from projects where client_id = ${client.id}`) as Array<{
+    count: number;
+  }>;
+  if (Number(rows[0]?.count || 0) > 0) return;
+
+  await insertProject(projectFromClient(client));
+}
+
+async function buildGeneratedPosterSlots(project: StudioProject, month: string) {
+  const normalizedMonth = /^\d{4}-\d{2}$/.test(month) ? month : todayIso().slice(0, 7);
+  const sql = getSql();
+  const rows = (await sql`
+    select slot_date from poster_slots
+    where project_id = ${project.id}
+      and to_char(slot_date, 'YYYY-MM') = ${normalizedMonth}
+  `) as Array<{ slot_date: unknown }>;
+  const existingDates = new Set(rows.map((row) => dateText(row.slot_date)));
+  const dates = getPosterSlotDates(normalizedMonth, project.monthlyPosterTarget || 30)
+    .filter((date) => !existingDates.has(date));
+  const clientId = project.clientId;
+
+  return dates.map((slotDate, index) =>
+    buildPosterSlotFromDraft({
+      projectId: project.id,
+      clientId,
+      title: `${project.projectName || "Poster Package"} - Poster ${String(existingDates.size + index + 1).padStart(2, "0")}`,
+      slotDate,
+      designer: project.designer || DEFAULT_ASSIGNEE,
+      status: "Planned",
+      captionRequired: true,
+      notes: "Generated monthly poster slot.",
+    }),
+  );
+}
+
+function getPosterSlotDates(month: string, target: number) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return [];
+
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0, 12)).getUTCDate();
+  const clampedTarget = Math.min(Math.max(target || 30, 1), daysInMonth);
+  const step = daysInMonth / clampedTarget;
+  const used = new Set<number>();
+
+  return Array.from({ length: clampedTarget }, (_, index) => {
+    let day = Math.min(daysInMonth, Math.max(1, Math.floor(index * step) + 1));
+    while (used.has(day) && day < daysInMonth) day += 1;
+    used.add(day);
+    return `${year}-${String(monthNumber).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  });
+}
+
 async function rescheduleLeadFollowups(leadId: string) {
   const lead = await getLeadById(leadId);
   if (!lead) return;
 
   const followups = await getFollowupsByLeadId(leadId);
-  await writeScheduleChanges(applyScheduleToLeadAndFollowups(lead, followups));
+  await writeScheduleChanges(applyScheduleToLeadAndFollowups(lead, followups), lead, followups);
 }
 
 async function writeScheduleChanges({
@@ -457,11 +863,11 @@ async function writeScheduleChanges({
 }: {
   lead: Lead;
   followups: Followup[];
-}) {
+}, currentLead?: Lead | null, currentFollowups: Followup[] = []) {
   const sql = getSql();
-  const currentLead = await getLeadById(lead.id);
+  const currentLeadRecord = currentLead === undefined ? await getLeadById(lead.id) : currentLead;
 
-  if (currentLead && currentLead.nextFollowupDate !== lead.nextFollowupDate) {
+  if (currentLeadRecord && currentLeadRecord.nextFollowupDate !== lead.nextFollowupDate) {
     await sql`
       update leads
       set next_followup_date = ${dateOrNull(lead.nextFollowupDate)}, updated_at = ${new Date().toISOString()}
@@ -469,7 +875,11 @@ async function writeScheduleChanges({
     `;
   }
 
+  const currentFollowupById = new Map(currentFollowups.map((followup) => [followup.id, followup]));
   for (const followup of followups) {
+    const currentFollowup = currentFollowupById.get(followup.id);
+    if (currentFollowup?.nextFollowupDate === followup.nextFollowupDate) continue;
+
     await sql`
       update followups
       set next_followup_date = ${dateOrNull(followup.nextFollowupDate)}
@@ -613,6 +1023,206 @@ async function updateLead(lead: Lead) {
   `;
 }
 
+async function insertClient(client: StudioClient) {
+  const sql = getSql();
+
+  await sql`
+    insert into clients (
+      id, lead_id, client_name, contact_person, phone, email, industry, location,
+      package_name, monthly_value, owner, status, start_date, renewal_date, notes, created_at, updated_at
+    )
+    values (
+      ${client.id}, ${client.leadId || null}, ${client.clientName}, ${client.contactPerson},
+      ${client.phone}, ${client.email}, ${client.industry}, ${client.location}, ${client.packageName},
+      ${client.monthlyValue}, ${client.owner}, ${client.status}, ${dateOrNull(client.startDate)},
+      ${dateOrNull(client.renewalDate)}, ${client.notes}, ${client.createdAt}, ${client.updatedAt}
+    )
+    on conflict (id) do update
+    set
+      lead_id = excluded.lead_id,
+      client_name = excluded.client_name,
+      contact_person = excluded.contact_person,
+      phone = excluded.phone,
+      email = excluded.email,
+      industry = excluded.industry,
+      location = excluded.location,
+      package_name = excluded.package_name,
+      monthly_value = excluded.monthly_value,
+      owner = excluded.owner,
+      status = excluded.status,
+      start_date = excluded.start_date,
+      renewal_date = excluded.renewal_date,
+      notes = excluded.notes,
+      updated_at = excluded.updated_at
+  `;
+}
+
+async function updateClient(client: StudioClient) {
+  const sql = getSql();
+
+  await sql`
+    update clients
+    set
+      lead_id = ${client.leadId || null},
+      client_name = ${client.clientName},
+      contact_person = ${client.contactPerson},
+      phone = ${client.phone},
+      email = ${client.email},
+      industry = ${client.industry},
+      location = ${client.location},
+      package_name = ${client.packageName},
+      monthly_value = ${client.monthlyValue},
+      owner = ${client.owner},
+      status = ${client.status},
+      start_date = ${dateOrNull(client.startDate)},
+      renewal_date = ${dateOrNull(client.renewalDate)},
+      notes = ${client.notes},
+      updated_at = ${client.updatedAt}
+    where id = ${client.id}
+  `;
+}
+
+async function insertProject(project: StudioProject) {
+  const sql = getSql();
+
+  await sql`
+    insert into projects (
+      id, client_id, project_name, project_type, status, designer,
+      monthly_poster_target, posters_completed, due_date, notes, created_at, updated_at
+    )
+    values (
+      ${project.id}, ${project.clientId}, ${project.projectName}, ${project.projectType},
+      ${project.status}, ${project.designer}, ${project.monthlyPosterTarget},
+      ${project.postersCompleted}, ${dateOrNull(project.dueDate)}, ${project.notes},
+      ${project.createdAt}, ${project.updatedAt}
+    )
+  `;
+}
+
+async function updateProject(project: StudioProject) {
+  const sql = getSql();
+
+  await sql`
+    update projects
+    set
+      client_id = ${project.clientId},
+      project_name = ${project.projectName},
+      project_type = ${project.projectType},
+      status = ${project.status},
+      designer = ${project.designer},
+      monthly_poster_target = ${project.monthlyPosterTarget},
+      posters_completed = ${project.postersCompleted},
+      due_date = ${dateOrNull(project.dueDate)},
+      notes = ${project.notes},
+      updated_at = ${project.updatedAt}
+    where id = ${project.id}
+  `;
+}
+
+async function insertPosterSlots(slots: PosterSlot[]) {
+  if (!slots.length) return;
+  const sql = getSql();
+
+  await sql`
+    insert into poster_slots (
+      id, project_id, client_id, title, slot_date, designer, status, caption_required,
+      notes, created_at, updated_at
+    )
+    select
+      x."id",
+      x."projectId",
+      x."clientId",
+      coalesce(x."title", ''),
+      nullif(x."slotDate", '')::date,
+      coalesce(x."designer", ${DEFAULT_ASSIGNEE}),
+      coalesce(x."status", 'Planned'),
+      coalesce(x."captionRequired", true),
+      coalesce(x."notes", ''),
+      coalesce(nullif(x."createdAt", '')::timestamptz, now()),
+      coalesce(nullif(x."updatedAt", '')::timestamptz, now())
+    from jsonb_to_recordset(${JSON.stringify(slots)}::jsonb) as x(
+      "id" text,
+      "projectId" text,
+      "clientId" text,
+      "title" text,
+      "slotDate" text,
+      "designer" text,
+      "status" text,
+      "captionRequired" boolean,
+      "notes" text,
+      "createdAt" text,
+      "updatedAt" text
+    )
+    on conflict (id) do nothing
+  `;
+}
+
+async function updatePosterSlot(slot: PosterSlot) {
+  const sql = getSql();
+
+  await sql`
+    update poster_slots
+    set
+      project_id = ${slot.projectId},
+      client_id = ${slot.clientId},
+      title = ${slot.title},
+      slot_date = ${dateOrNull(slot.slotDate)},
+      designer = ${slot.designer},
+      status = ${slot.status},
+      caption_required = ${slot.captionRequired},
+      notes = ${slot.notes},
+      updated_at = ${slot.updatedAt}
+    where id = ${slot.id}
+  `;
+}
+
+async function insertSettings(settings: StudioSetting[]) {
+  if (!settings.length) return;
+  const sql = getSql();
+
+  await sql`
+    insert into studio_settings (
+      id, category, label, value, is_active, notes, created_at, updated_at
+    )
+    select
+      x."id",
+      x."category",
+      x."label",
+      coalesce(x."value", ''),
+      coalesce(x."isActive", true),
+      coalesce(x."notes", ''),
+      coalesce(nullif(x."createdAt", '')::timestamptz, now()),
+      coalesce(nullif(x."updatedAt", '')::timestamptz, now())
+    from jsonb_to_recordset(${JSON.stringify(settings)}::jsonb) as x(
+      "id" text,
+      "category" text,
+      "label" text,
+      "value" text,
+      "isActive" boolean,
+      "notes" text,
+      "createdAt" text,
+      "updatedAt" text
+    )
+    on conflict (id) do nothing
+  `;
+}
+
+async function updateSetting(setting: StudioSetting) {
+  const sql = getSql();
+
+  await sql`
+    update studio_settings
+    set
+      category = ${setting.category},
+      label = ${setting.label},
+      value = ${setting.value},
+      is_active = ${setting.isActive},
+      notes = ${setting.notes},
+      updated_at = ${setting.updatedAt}
+    where id = ${setting.id}
+  `;
+}
+
 async function insertFollowups(followups: Followup[]) {
   if (!followups.length) return;
   const sql = getSql();
@@ -685,6 +1295,148 @@ function buildLog(leadId: string, action: string, oldValue: string, newValue: st
     createdBy: "captain",
     createdAt: new Date().toISOString(),
   };
+}
+
+function buildClientFromDraft(draft: StudioClientDraft): StudioClient {
+  const now = new Date().toISOString();
+  return {
+    ...draft,
+    id: createId("client"),
+    clientName: draft.clientName || draft.contactPerson || "Untitled client",
+    owner: draft.owner || DEFAULT_ASSIGNEE,
+    status: draft.status || "Active",
+    monthlyValue: Number(draft.monthlyValue || 0),
+    startDate: draft.startDate || todayIso(),
+    renewalDate: draft.renewalDate || offsetDate(30),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function buildProjectFromDraft(draft: StudioProjectDraft): StudioProject {
+  const now = new Date().toISOString();
+  return {
+    ...draft,
+    id: createId("project"),
+    projectName: draft.projectName || "CG Studio Project",
+    projectType: draft.projectType || "Poster Package",
+    status: draft.status || "Planning",
+    designer: draft.designer || DEFAULT_ASSIGNEE,
+    monthlyPosterTarget: Number(draft.monthlyPosterTarget || 0),
+    postersCompleted: Number(draft.postersCompleted || 0),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function buildPosterSlotFromDraft(draft: PosterSlotDraft): PosterSlot {
+  const now = new Date().toISOString();
+  return {
+    ...draft,
+    id: createId("poster"),
+    title: draft.title || "Poster slot",
+    slotDate: draft.slotDate || todayIso(),
+    designer: draft.designer || DEFAULT_ASSIGNEE,
+    status: draft.status || "Planned",
+    captionRequired: draft.captionRequired ?? true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function buildSettingFromDraft(draft: StudioSettingDraft): StudioSetting {
+  const now = new Date().toISOString();
+  return {
+    ...draft,
+    id: createId("setting"),
+    label: draft.label || draft.value || "Untitled setting",
+    value: draft.value || draft.label || "",
+    isActive: draft.isActive ?? true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function clientDraftFromLead(lead: Lead): StudioClientDraft {
+  return {
+    leadId: lead.id,
+    clientName: lead.businessName || lead.leadName || lead.contactPerson || "Won lead client",
+    contactPerson: lead.contactPerson || lead.leadName,
+    phone: lead.phone,
+    email: lead.email,
+    industry: lead.industry,
+    location: lead.location,
+    packageName: lead.serviceInterest,
+    monthlyValue: lead.expectedValue,
+    owner: lead.assignedTo || DEFAULT_ASSIGNEE,
+    status: "Active",
+    startDate: todayIso(),
+    renewalDate: offsetDate(30),
+    notes: lead.remarks,
+  };
+}
+
+function projectFromClient(client: StudioClient): StudioProject {
+  return buildProjectFromDraft({
+    clientId: client.id,
+    projectName: `${client.clientName} - ${client.packageName}`,
+    projectType: getProjectTypeFromPackage(client.packageName),
+    status: "Planning",
+    designer: client.owner || DEFAULT_ASSIGNEE,
+    monthlyPosterTarget: getPosterTarget(client.packageName),
+    postersCompleted: 0,
+    dueDate: client.renewalDate,
+    notes: `Created automatically from ${client.packageName}.`,
+  });
+}
+
+function getProjectTypeFromPackage(packageName: string): StudioProject["projectType"] {
+  if (packageName.includes("Branding")) return "Branding";
+  if (packageName.includes("Maintenance")) return "Maintenance";
+  if (packageName.includes("Creative")) return "One-time Creative";
+  return "Poster Package";
+}
+
+function getPosterTarget(packageName: string) {
+  if (packageName.includes("15")) return 15;
+  if (packageName.includes("Poster")) return 30;
+  return 0;
+}
+
+function defaultStudioSettings() {
+  const now = new Date().toISOString();
+  const rows: Array<[StudioSetting["category"], string, string]> = [
+    ["Package", "30 Poster Package", "5000"],
+    ["Package", "15 Posters Monthly Package", "3000"],
+    ["Package", "Branding", "Custom"],
+    ["Package", "One-time Creative", "Custom"],
+    ["Industry", "Restaurant & Food", ""],
+    ["Industry", "Healthcare", ""],
+    ["Industry", "Real Estate & Interiors", ""],
+    ["Industry", "Retail & Boutique", ""],
+    ["Team Member", "Naveen", "Sales / Owner"],
+    ["Team Member", "Sachin", "Designer"],
+    ["Team Member", "Kristom", "Operations"],
+    ["Lead Source", "Instagram", ""],
+    ["Lead Source", "Facebook", ""],
+    ["Lead Source", "Referral", ""],
+    ["Lead Status", "Won", ""],
+    ["Lead Status", "No Response", ""],
+    ["Project Status", "Planning", ""],
+    ["Project Status", "In Progress", ""],
+    ["Project Status", "Delivered", ""],
+  ];
+
+  return rows.map(([category, label, value]) => ({
+    id: createId("setting"),
+    category,
+    label,
+    value,
+    isActive: true,
+    notes: "",
+    createdAt: now,
+    updatedAt: now,
+  }));
 }
 
 function buildChangeLogs(existing: Lead, updated: Lead) {
@@ -765,6 +1517,74 @@ function mapActivityLog(row: Record<string, unknown>): ActivityLog {
     newValue: text(row.new_value),
     createdBy: text(row.created_by),
     createdAt: isoText(row.created_at),
+  };
+}
+
+function mapClient(row: Record<string, unknown>): StudioClient {
+  return {
+    id: text(row.id),
+    leadId: text(row.lead_id),
+    clientName: text(row.client_name),
+    contactPerson: text(row.contact_person),
+    phone: text(row.phone),
+    email: text(row.email),
+    industry: text(row.industry),
+    location: text(row.location),
+    packageName: text(row.package_name) as StudioClient["packageName"],
+    monthlyValue: Number(row.monthly_value || 0),
+    owner: text(row.owner),
+    status: text(row.status) as StudioClient["status"],
+    startDate: dateText(row.start_date),
+    renewalDate: dateText(row.renewal_date),
+    notes: text(row.notes),
+    createdAt: isoText(row.created_at),
+    updatedAt: isoText(row.updated_at),
+  };
+}
+
+function mapProject(row: Record<string, unknown>): StudioProject {
+  return {
+    id: text(row.id),
+    clientId: text(row.client_id),
+    projectName: text(row.project_name),
+    projectType: text(row.project_type) as StudioProject["projectType"],
+    status: text(row.status) as StudioProject["status"],
+    designer: text(row.designer),
+    monthlyPosterTarget: Number(row.monthly_poster_target || 0),
+    postersCompleted: Number(row.posters_completed || 0),
+    dueDate: dateText(row.due_date),
+    notes: text(row.notes),
+    createdAt: isoText(row.created_at),
+    updatedAt: isoText(row.updated_at),
+  };
+}
+
+function mapPosterSlot(row: Record<string, unknown>): PosterSlot {
+  return {
+    id: text(row.id),
+    projectId: text(row.project_id),
+    clientId: text(row.client_id),
+    title: text(row.title),
+    slotDate: dateText(row.slot_date),
+    designer: text(row.designer),
+    status: text(row.status) as PosterSlot["status"],
+    captionRequired: Boolean(row.caption_required),
+    notes: text(row.notes),
+    createdAt: isoText(row.created_at),
+    updatedAt: isoText(row.updated_at),
+  };
+}
+
+function mapSetting(row: Record<string, unknown>): StudioSetting {
+  return {
+    id: text(row.id),
+    category: text(row.category) as StudioSetting["category"],
+    label: text(row.label),
+    value: text(row.value),
+    isActive: Boolean(row.is_active),
+    notes: text(row.notes),
+    createdAt: isoText(row.created_at),
+    updatedAt: isoText(row.updated_at),
   };
 }
 

@@ -1,10 +1,15 @@
 import type {
+  ClientStatus,
   FollowupOutcome,
   FollowupType,
   LeadStage,
   LeadTemperature,
   ObjectionReason,
+  PosterSlotStatus,
+  ProjectStatus,
+  ProjectType,
   ServiceInterest,
+  StudioSettingCategory,
 } from "./types";
 
 export const leadTemperatureOptions: LeadTemperature[] = ["Hot", "Warm", "Cold"];
@@ -69,6 +74,8 @@ export const DEFAULT_ASSIGNEE = "Naveen";
 
 export const assigneeOptions = [DEFAULT_ASSIGNEE, "Sachin", "Kristom"];
 
+export const designerOptions = [DEFAULT_ASSIGNEE, "Sachin", "Kristom"];
+
 export const DEFAULT_INDUSTRY = "Other Services";
 
 export const leadSourceOptions = [
@@ -88,13 +95,55 @@ export const primaryModules = [
   { label: "Reports", href: "/reports" },
 ];
 
+export const clientStatusOptions: ClientStatus[] = [
+  "Active",
+  "Onboarding",
+  "Paused",
+  "Renewal Due",
+  "Closed",
+];
+
+export const projectTypeOptions: ProjectType[] = [
+  "Poster Package",
+  "Branding",
+  "One-time Creative",
+  "Maintenance",
+];
+
+export const projectStatusOptions: ProjectStatus[] = [
+  "Planning",
+  "In Progress",
+  "In Review",
+  "Approved",
+  "Delivered",
+  "On Hold",
+];
+
+export const posterSlotStatusOptions: PosterSlotStatus[] = [
+  "Planned",
+  "Designing",
+  "Review",
+  "Approved",
+  "Scheduled",
+  "Posted",
+];
+
+export const settingCategoryOptions: StudioSettingCategory[] = [
+  "Package",
+  "Industry",
+  "Team Member",
+  "Lead Status",
+  "Lead Source",
+  "Project Status",
+];
+
 export const cgStudioModules = [
-  { label: "Clients", href: "/clients" },
-  { label: "Projects", href: "/projects" },
-  { label: "Poster Calendar", href: "/poster-calendar" },
-  { label: "Website Projects", href: "/website-projects" },
-  { label: "Payments", href: "/payments" },
-  { label: "Settings", href: "/settings" },
+  { label: "Clients", href: "/clients", status: "Active" },
+  { label: "Projects", href: "/projects", status: "Active" },
+  { label: "Poster Calendar", href: "/poster-calendar", status: "Active" },
+  { label: "Website Projects", href: "/website-projects", status: "Coming Soon" },
+  { label: "Payments", href: "/payments", status: "Coming Soon" },
+  { label: "Settings", href: "/settings", status: "Active" },
 ];
 
 export const wingCards = [
@@ -134,15 +183,15 @@ export const phaseOneModules = [
   "Follow-ups",
   "Reports",
   "CSV Import",
-];
-
-export const futureModules = [
   "Clients",
   "Projects",
   "Poster Calendar",
+  "Settings",
+];
+
+export const futureModules = [
   "Website Projects",
   "Payments",
-  "Settings",
   "YAA",
   "Hiring",
   "Outsourcing",

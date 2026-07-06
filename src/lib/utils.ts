@@ -215,7 +215,14 @@ export function statusTone(status: LeadStage | LeadTemperature | string) {
   if (status === "Won" || status === "Converted" || status === "Active")
     return "success";
   if (status === "Lost" || status === "Rejected") return "danger";
-  if (status === "No Response") return "muted";
+  if (status === "Closed" || status === "No Response") return "muted";
+  if (status === "Paused" || status === "On Hold") return "soon";
+  if (status === "Renewal Due" || status === "In Review" || status === "Review")
+    return "warm";
+  if (status === "Delivered" || status === "Posted" || status === "Approved" || status === "Scheduled")
+    return "success";
+  if (status === "Planning" || status === "Planned" || status === "Designing" || status === "In Progress")
+    return "info";
   if (status === "Coming Soon") return "soon";
   if (status === "Proposal Sent" || status === "Details Sent") return "info";
   return "neutral";

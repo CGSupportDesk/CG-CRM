@@ -5,5 +5,9 @@ export function createSeedData(): CRMState {
     leads: [],
     followups: [],
     activityLogs: [],
+    clients: [],
+    projects: [],
+    posterSlots: [],
+    settings: [],
   };
 }

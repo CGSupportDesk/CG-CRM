@@ -103,10 +103,114 @@ export interface ActivityLog {
   createdAt: string;
 }
 
+export type ClientStatus = "Active" | "Onboarding" | "Paused" | "Renewal Due" | "Closed";
+
+export interface StudioClient {
+  id: string;
+  leadId: string;
+  clientName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  industry: string;
+  location: string;
+  packageName: ServiceInterest;
+  monthlyValue: number;
+  owner: string;
+  status: ClientStatus;
+  startDate: string;
+  renewalDate: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudioClientDraft = Omit<StudioClient, "id" | "createdAt" | "updatedAt">;
+
+export type ProjectType =
+  | "Poster Package"
+  | "Branding"
+  | "One-time Creative"
+  | "Maintenance";
+
+export type ProjectStatus =
+  | "Planning"
+  | "In Progress"
+  | "In Review"
+  | "Approved"
+  | "Delivered"
+  | "On Hold";
+
+export interface StudioProject {
+  id: string;
+  clientId: string;
+  projectName: string;
+  projectType: ProjectType;
+  status: ProjectStatus;
+  designer: string;
+  monthlyPosterTarget: number;
+  postersCompleted: number;
+  dueDate: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudioProjectDraft = Omit<StudioProject, "id" | "createdAt" | "updatedAt">;
+
+export type PosterSlotStatus =
+  | "Planned"
+  | "Designing"
+  | "Review"
+  | "Approved"
+  | "Scheduled"
+  | "Posted";
+
+export interface PosterSlot {
+  id: string;
+  projectId: string;
+  clientId: string;
+  title: string;
+  slotDate: string;
+  designer: string;
+  status: PosterSlotStatus;
+  captionRequired: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PosterSlotDraft = Omit<PosterSlot, "id" | "createdAt" | "updatedAt">;
+
+export type StudioSettingCategory =
+  | "Package"
+  | "Industry"
+  | "Team Member"
+  | "Lead Status"
+  | "Lead Source"
+  | "Project Status";
+
+export interface StudioSetting {
+  id: string;
+  category: StudioSettingCategory;
+  label: string;
+  value: string;
+  isActive: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudioSettingDraft = Omit<StudioSetting, "id" | "createdAt" | "updatedAt">;
+
 export interface CRMState {
   leads: Lead[];
   followups: Followup[];
   activityLogs: ActivityLog[];
+  clients: StudioClient[];
+  projects: StudioProject[];
+  posterSlots: PosterSlot[];
+  settings: StudioSetting[];
 }
 
 export interface ImportPreviewRow {

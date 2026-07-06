@@ -103,10 +103,10 @@ export default async function Home() {
 
       <section className="mx-auto grid max-w-7xl gap-5 px-5 py-12 sm:px-6 lg:grid-cols-2">
         <Panel>
-          <h2 className="text-2xl font-semibold tracking-tight">Phase 1 focus</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">Active CG Studio system</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            The first release replaces the Excel Sales Lead Tracker with a proper
-            CRM workspace for CG Studio.
+            Growth Engine now connects sales leads, clients, projects, poster slots,
+            settings, reports, and dashboard operations for CG Studio.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             {phaseOneModules.map((module) => (
@@ -115,10 +115,10 @@ export default async function Home() {
           </div>
         </Panel>
         <Panel dark>
-          <h2 className="text-2xl font-semibold tracking-tight">Future modules</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">Future expansion</h2>
           <p className="mt-2 text-sm leading-6 text-[#cad6dc]">
-            The sidebar already makes room for Phase 2 modules and future wings
-            without building backend logic before it is needed.
+            Website projects, payments, and other Closing Gap wings stay visible
+            without overbuilding backend logic before it is needed.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             {futureModules.map((module) => (
@@ -133,8 +133,8 @@ export default async function Home() {
           <div>
             <h2 className="text-3xl font-semibold tracking-tight">Dashboard preview</h2>
             <p className="mt-4 text-sm leading-6 text-muted">
-              See lead temperature, stages, overdue follow-ups, expected revenue,
-              hot leads needing action, and recent activity from one place.
+              See lead temperature, overdue follow-ups, client count, active projects,
+              poster production, expected revenue, and recent activity from one place.
             </p>
           </div>
           <div className="rounded-[24px] bg-surface-strong p-4 text-white">

@@ -40,7 +40,7 @@ export function buildPosterCampaignSeed(trackerTsv: string): CRMState {
   );
   const activityLogs: ActivityLog[] = leads.flatMap((lead) => buildActivityLogs(lead));
 
-  return { leads, followups, activityLogs };
+  return { leads, followups, activityLogs, clients: [], projects: [], posterSlots: [], settings: [] };
 }
 
 function parsePosterCampaignTracker(trackerTsv: string): TrackerRow[] {
