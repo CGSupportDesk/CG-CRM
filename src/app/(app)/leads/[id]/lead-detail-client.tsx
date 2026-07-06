@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, ArrowLeft, CheckCircle2, Edit3, Phone, Plus, XCircle } from "lucide-react";
+import { Archive, ArrowLeft, CheckCircle2, Edit3, MessageCircle, Phone, Plus, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { FollowupForm } from "@/components/followup-form";
 import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
+import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { leadStageOptions, leadTemperatureOptions } from "@/lib/constants";
 import type { FollowupDraft, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue } from "@/lib/utils";
@@ -20,9 +21,11 @@ export function LeadDetailClient({ id }: { id: string }) {
     updateLead,
     archiveLead,
     addFollowup,
+    logLeadActivity,
   } = useCRM();
   const [showFollowupForm, setShowFollowupForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [showWhatsappForm, setShowWhatsappForm] = useState(false);
 
   const lead = leads.find((item) => item.id === id);
   const leadFollowups = useMemo(
@@ -79,6 +82,10 @@ export function LeadDetailClient({ id }: { id: string }) {
         description={lead.remarks || "Full lead profile, status, follow-up history, and activity timeline."}
         action={
           <>
+            <Button variant="secondary" onClick={() => setShowWhatsappForm(true)}>
+              <MessageCircle className="h-4 w-4" />
+              Send WhatsApp
+            </Button>
             <Button variant="secondary" onClick={() => setShowEditForm(true)}>
               <Edit3 className="h-4 w-4" />
               Edit Lead
@@ -240,6 +247,16 @@ export function LeadDetailClient({ id }: { id: string }) {
       {showEditForm ? (
         <Modal title="Edit lead" description="Update the full CRM profile." onClose={() => setShowEditForm(false)} wide>
           <LeadForm lead={lead} onSubmit={submitEdit} onCancel={() => setShowEditForm(false)} />
+        </Modal>
+      ) : null}
+
+      {showWhatsappForm ? (
+        <Modal title="Send WhatsApp" description="Preview and edit the message before opening WhatsApp." onClose={() => setShowWhatsappForm(false)}>
+          <WhatsAppModal
+            recipient={lead}
+            onClose={() => setShowWhatsappForm(false)}
+            onOpened={(template) => logLeadActivity(lead.id, "WhatsApp opened", template)}
+          />
         </Modal>
       ) : null}
     </div>

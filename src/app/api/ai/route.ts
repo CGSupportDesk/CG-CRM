@@ -387,10 +387,22 @@ function priorityScore(lead: Lead) {
 }
 
 function normalizeTemplate(value: unknown): WhatsappTemplateKey {
+  const legacyTemplateMap: Record<string, WhatsappTemplateKey> = {
+    "send details": "Details Sent",
+    "will think about it": "Follow-up",
+    "did not answer": "Follow-up",
+    "seen but no reply": "Follow-up",
+    "sample offer": "Proposal Follow-up",
+    "price objection": "Proposal Follow-up",
+    none: "Custom Message",
+  };
+  const legacy = legacyTemplateMap[text(value).toLowerCase()];
+  if (legacy) return legacy;
+
   const selected = whatsappTemplateOptions.find(
     (option) => option.toLowerCase() === text(value).toLowerCase(),
   );
-  return selected || "None";
+  return selected || "Custom Message";
 }
 
 function pickAllowed<T extends string>(value: unknown, options: T[]): T | undefined {

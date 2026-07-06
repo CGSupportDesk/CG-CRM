@@ -1,19 +1,22 @@
 "use client";
 
-import { Edit3, Plus, Trash2, Users } from "lucide-react";
+import Link from "next/link";
+import { Edit3, Eye, MessageCircle, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
-import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
+import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
+import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { assigneeOptions, clientStatusOptions, serviceInterestOptions } from "@/lib/constants";
 import type { ClientStatus, StudioClient, StudioClientDraft } from "@/lib/types";
 import { formatCurrency, formatDate, getDisplayName, todayIso } from "@/lib/utils";
 
 export function ClientsClient() {
-  const { clients, leads, projects, loading, saving, addClient, updateClient, deleteClient } = useCRM();
+  const { clients, leads, projects, loading, saving, addClient, updateClient, deleteClient, logLeadActivity } = useCRM();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<ClientStatus | "all">("all");
   const [editingClient, setEditingClient] = useState<StudioClient | null>(null);
   const [addingClient, setAddingClient] = useState(false);
+  const [whatsappClient, setWhatsappClient] = useState<StudioClient | null>(null);
 
   const projectCountByClient = useMemo(
     () =>
@@ -130,7 +133,9 @@ export function ClientsClient() {
                   {filteredClients.map((client) => (
                     <tr key={client.id}>
                       <td className="px-4 py-4">
-                        <p className="font-semibold">{client.clientName}</p>
+                        <Link href={`/clients/${client.id}`} className="font-semibold hover:underline">
+                          {client.clientName}
+                        </Link>
                         <p className="mt-1 text-xs text-muted">{client.contactPerson || "No contact"} - {client.phone || "No phone"}</p>
                         <p className="mt-1 text-xs text-muted">{client.industry || "Industry not set"}</p>
                       </td>
@@ -144,6 +149,12 @@ export function ClientsClient() {
                       <td className="px-4 py-4"><Badge>{client.status}</Badge></td>
                       <td className="px-4 py-4">
                         <div className="flex gap-2">
+                          <Button variant="secondary" size="icon" title="Send WhatsApp" onClick={() => setWhatsappClient(client)}>
+                            <MessageCircle className="h-4 w-4" />
+                          </Button>
+                          <Link href={`/clients/${client.id}`} className={buttonClasses("ghost", "icon")} title="Open client">
+                            <Eye className="h-4 w-4" />
+                          </Link>
                           <Button variant="ghost" size="icon" title="Edit client" onClick={() => setEditingClient(client)}>
                             <Edit3 className="h-4 w-4" />
                           </Button>
@@ -184,6 +195,20 @@ export function ClientsClient() {
             onCancel={() => {
               setAddingClient(false);
               setEditingClient(null);
+            }}
+          />
+        </Modal>
+      ) : null}
+
+      {whatsappClient ? (
+        <Modal title="Send WhatsApp" description="Preview and edit the message before opening WhatsApp." onClose={() => setWhatsappClient(null)}>
+          <WhatsAppModal
+            recipient={whatsappClient}
+            onClose={() => setWhatsappClient(null)}
+            onOpened={(template) => {
+              if (whatsappClient.leadId) {
+                return logLeadActivity(whatsappClient.leadId, "WhatsApp opened", template);
+              }
             }}
           />
         </Modal>

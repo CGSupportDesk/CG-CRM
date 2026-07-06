@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, Edit3, Eye, FileUp, Plus, Search, Trash2 } from "lucide-react";
+import { Archive, Edit3, Eye, FileUp, MessageCircle, Plus, Search, Trash2 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { CsvImporter } from "@/components/csv-importer";
 import { useCRM } from "@/components/crm-provider";
 import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
+import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { leadStageOptions, leadTemperatureOptions, serviceInterestOptions } from "@/lib/constants";
 import type { Lead, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
@@ -18,7 +19,7 @@ type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
 const temperatureWeight = { Hot: 0, Warm: 1, Cold: 2 };
 
 export function LeadsClient() {
-  const { leads, loading, saving, addLead, updateLead, archiveLead, deleteLead } = useCRM();
+  const { leads, loading, saving, addLead, updateLead, archiveLead, deleteLead, logLeadActivity } = useCRM();
   const [query, setQuery] = useState("");
   const [temperature, setTemperature] = useState("all");
   const [stage, setStage] = useState("all");
@@ -30,6 +31,7 @@ export function LeadsClient() {
   const [showImport, setShowImport] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [addingLead, setAddingLead] = useState(false);
+  const [whatsappLead, setWhatsappLead] = useState<Lead | null>(null);
 
   const industries = useMemo(
     () =>
@@ -191,12 +193,12 @@ export function LeadsClient() {
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
-                    <th className="w-[34%] px-4 py-3">Lead</th>
-                    <th className="w-[14%] px-3 py-3">Phone</th>
-                    <th className="w-[11%] px-3 py-3">Temp</th>
-                    <th className="w-[16%] px-3 py-3">Stage</th>
-                    <th className="w-[15%] px-3 py-3">Next</th>
-                    <th className="w-[10%] px-3 py-3">Actions</th>
+                    <th className="w-[31%] px-4 py-3">Lead</th>
+                    <th className="w-[13%] px-3 py-3">Phone</th>
+                    <th className="w-[10%] px-3 py-3">Temp</th>
+                    <th className="w-[15%] px-3 py-3">Stage</th>
+                    <th className="w-[16%] px-3 py-3">Next</th>
+                    <th className="w-[15%] px-3 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -259,7 +261,10 @@ export function LeadsClient() {
                         </div>
                       </td>
                       <td className="px-3 py-4">
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <Button variant="secondary" size="icon" title="Send WhatsApp" onClick={() => setWhatsappLead(lead)}>
+                            <MessageCircle className="h-4 w-4" />
+                          </Button>
                           <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
                             <Eye className="h-4 w-4" />
                           </Link>
@@ -307,6 +312,16 @@ export function LeadsClient() {
               setAddingLead(false);
               setEditingLead(null);
             }}
+          />
+        </Modal>
+      ) : null}
+
+      {whatsappLead ? (
+        <Modal title="Send WhatsApp" description="Preview and edit the message before opening WhatsApp." onClose={() => setWhatsappLead(null)}>
+          <WhatsAppModal
+            recipient={whatsappLead}
+            onClose={() => setWhatsappLead(null)}
+            onOpened={(template) => logLeadActivity(whatsappLead.id, "WhatsApp opened", template)}
           />
         </Modal>
       ) : null}

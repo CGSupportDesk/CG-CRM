@@ -29,6 +29,7 @@ interface CRMContextValue extends CRMState {
   updateLead: (id: string, changes: Partial<LeadDraft>) => Promise<void>;
   archiveLead: (id: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
+  logLeadActivity: (leadId: string, action: string, newValue?: string) => Promise<void>;
   addFollowup: (followup: FollowupDraft) => Promise<string>;
   updateFollowup: (id: string, changes: Partial<FollowupDraft>) => Promise<void>;
   importLegacyRows: (rows: ImportPreviewRow[]) => Promise<ImportSummary>;
@@ -136,6 +137,13 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const deleteLead = useCallback(
     async (id: string) => {
       await mutate({ action: "deleteLead", id });
+    },
+    [mutate],
+  );
+
+  const logLeadActivity = useCallback(
+    async (leadId: string, action: string, newValue = "") => {
+      await mutate({ action: "logLeadActivity", leadId, logAction: action, newValue });
     },
     [mutate],
   );
@@ -278,6 +286,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       updateLead,
       archiveLead,
       deleteLead,
+      logLeadActivity,
       addFollowup,
       updateFollowup,
       importLegacyRows,
@@ -306,6 +315,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       archiveLead,
       deleteClient,
       deleteLead,
+      logLeadActivity,
       deletePosterSlot,
       deleteProject,
       deleteStudioSetting,

@@ -134,6 +134,20 @@ export async function deleteLeadRecord(id: string) {
   return { state: await readCrmState(sql) };
 }
 
+export async function logLeadActivityRecord(
+  leadId: string,
+  action: string,
+  newValue = "",
+) {
+  await ensureCrmSchema();
+
+  const lead = await getLeadById(leadId);
+  if (!lead) return { state: await readCrmState() };
+
+  await insertLogs([buildLog(leadId, action, "", newValue)]);
+  return { state: await readCrmState() };
+}
+
 export async function addClientRecord(draft: StudioClientDraft) {
   await ensureCrmSchema();
 

@@ -18,6 +18,7 @@ import {
   getCrmState,
   hasDatabaseUrl,
   importLegacyRowsRecord,
+  logLeadActivityRecord,
   resetCrmFromPrivateSeed,
   updateClientRecord,
   updateFollowupRecord,
@@ -43,6 +44,7 @@ type CrmAction =
   | { action: "updateLead"; id: string; changes: Partial<LeadDraft> }
   | { action: "archiveLead"; id: string }
   | { action: "deleteLead"; id: string }
+  | { action: "logLeadActivity"; leadId: string; logAction: string; newValue?: string }
   | { action: "addFollowup"; followup: FollowupDraft }
   | { action: "updateFollowup"; id: string; changes: Partial<FollowupDraft> }
   | { action: "importLegacyRows"; rows: ImportPreviewRow[] }
@@ -103,6 +105,11 @@ export async function POST(request: Request) {
     }
     if (body.action === "deleteLead") {
       return NextResponse.json(await deleteLeadRecord(body.id));
+    }
+    if (body.action === "logLeadActivity") {
+      return NextResponse.json(
+        await logLeadActivityRecord(body.leadId, body.logAction, body.newValue),
+      );
     }
     if (body.action === "addFollowup") {
       return NextResponse.json(await addFollowupRecord(body.followup));

@@ -1,23 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarPlus, ExternalLink, Plus } from "lucide-react";
+import { CalendarPlus, ExternalLink, MessageCircle, Plus } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { FollowupForm } from "@/components/followup-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
+import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { DEFAULT_ASSIGNEE, assigneeOptions, followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
 import { getFollowupTasks } from "@/lib/analytics";
-import type { FollowupDraft } from "@/lib/types";
+import type { FollowupDraft, Lead } from "@/lib/types";
 import { formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 export function FollowUpsClient() {
-  const { leads, followups, loading, addFollowup, updateFollowup } = useCRM();
+  const { leads, followups, loading, addFollowup, updateFollowup, logLeadActivity } = useCRM();
   const [typeFilter, setTypeFilter] = useState("all");
   const [outcomeFilter, setOutcomeFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [whatsappLead, setWhatsappLead] = useState<Lead | null>(null);
 
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const assignedPeople = useMemo(
@@ -88,9 +90,9 @@ export function FollowUpsClient() {
       </Panel>
 
       <div className="grid gap-5 xl:grid-cols-3">
-        <TaskColumn title="Today's follow-ups" tone="success" items={todays} onAdd={openForm} />
-        <TaskColumn title="Overdue follow-ups" tone="danger" items={overdue} onAdd={openForm} />
-        <TaskColumn title="Upcoming follow-ups" tone="info" items={upcoming} onAdd={openForm} />
+        <TaskColumn title="Today's follow-ups" tone="success" items={todays} onAdd={openForm} onWhatsApp={setWhatsappLead} />
+        <TaskColumn title="Overdue follow-ups" tone="danger" items={overdue} onAdd={openForm} onWhatsApp={setWhatsappLead} />
+        <TaskColumn title="Upcoming follow-ups" tone="info" items={upcoming} onAdd={openForm} onWhatsApp={setWhatsappLead} />
       </div>
 
       <Panel>
@@ -113,7 +115,7 @@ export function FollowUpsClient() {
                     <th className="px-4 py-3">Outcome</th>
                     <th className="px-4 py-3">Next Date</th>
                     <th className="px-4 py-3">Remarks</th>
-                    <th className="px-4 py-3">Open</th>
+                    <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -144,11 +146,19 @@ export function FollowUpsClient() {
                           </td>
                           <td className="max-w-[260px] px-4 py-4 text-muted">{followup.remarks || "No remarks"}</td>
                           <td className="px-4 py-4">
-                            {lead ? (
-                              <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-2 font-bold text-accent-dark">
-                                Open <ExternalLink className="h-3.5 w-3.5" />
-                              </Link>
-                            ) : null}
+                            <div className="flex flex-wrap gap-2">
+                              {lead ? (
+                                <>
+                                  <Button variant="secondary" size="sm" onClick={() => setWhatsappLead(lead)}>
+                                    <MessageCircle className="h-4 w-4" />
+                                    WhatsApp
+                                  </Button>
+                                  <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-2 font-bold text-accent-dark">
+                                    Open <ExternalLink className="h-3.5 w-3.5" />
+                                  </Link>
+                                </>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -175,6 +185,16 @@ export function FollowUpsClient() {
           />
         </Modal>
       ) : null}
+
+      {whatsappLead ? (
+        <Modal title="Send WhatsApp" description="Preview and edit the message before opening WhatsApp." onClose={() => setWhatsappLead(null)}>
+          <WhatsAppModal
+            recipient={whatsappLead}
+            onClose={() => setWhatsappLead(null)}
+            onOpened={(template) => logLeadActivity(whatsappLead.id, "WhatsApp opened", template)}
+          />
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -184,11 +204,13 @@ function TaskColumn({
   tone,
   items,
   onAdd,
+  onWhatsApp,
 }: {
   title: string;
   tone: "success" | "danger" | "info";
   items: ReturnType<typeof getFollowupTasks>;
   onAdd: (leadId: string) => void;
+  onWhatsApp: (lead: Lead) => void;
 }) {
   return (
     <Panel className="space-y-4">
@@ -215,10 +237,16 @@ function TaskColumn({
                 <Badge>{lead.leadTemperature}</Badge>
               </div>
               <p className="mt-3 text-sm text-muted">{latestFollowup?.outcome || lead.leadStage}</p>
-              <Button className="mt-4" variant="secondary" size="sm" onClick={() => onAdd(lead.id)}>
-                <CalendarPlus className="h-4 w-4" />
-                Log Follow-up
-              </Button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="secondary" size="sm" onClick={() => onWhatsApp(lead)}>
+                  <MessageCircle className="h-4 w-4" />
+                  WhatsApp
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => onAdd(lead.id)}>
+                  <CalendarPlus className="h-4 w-4" />
+                  Log Follow-up
+                </Button>
+              </div>
             </div>
           ))}
         </div>
