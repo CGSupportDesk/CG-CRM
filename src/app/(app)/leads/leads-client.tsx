@@ -8,9 +8,10 @@ import { useCRM } from "@/components/crm-provider";
 import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { leadStageOptions, leadTemperatureOptions, serviceInterestOptions } from "@/lib/constants";
+import { getNextFollowupDateForNewFollowup } from "@/lib/followup-schedule";
 import type { FollowupDraft, FollowupOutcome, Lead, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
-import { cn, formatCurrency, getDisplayName, isOverdue, isToday, offsetDate, todayIso } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday, todayIso } from "@/lib/utils";
 
 type SortMode = "created-desc" | "created-asc" | "followup-asc" | "temperature";
 type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
@@ -18,7 +19,7 @@ type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
 const temperatureWeight = { Hot: 0, Warm: 1, Cold: 2 };
 
 export function LeadsClient() {
-  const { leads, loading, saving, addLead, updateLead, archiveLead, deleteLead, addFollowup } = useCRM();
+  const { leads, followups, loading, saving, addLead, updateLead, archiveLead, deleteLead, addFollowup } = useCRM();
   const [query, setQuery] = useState("");
   const [temperature, setTemperature] = useState("all");
   const [stage, setStage] = useState("all");
@@ -106,13 +107,20 @@ export function LeadsClient() {
   function quickLogFollowup(lead: Lead, outcome: FollowupOutcome) {
     const followupType: FollowupDraft["followupType"] =
       outcome === "Details Sent" ? "WhatsApp" : "Call";
+    const followupDate = todayIso();
+    const leadFollowups = followups.filter((followup) => followup.leadId === lead.id);
 
     void addFollowup({
       leadId: lead.id,
-      followupDate: todayIso(),
+      followupDate,
       followupType,
       outcome,
-      nextFollowupDate: getQuickNextFollowupDate(lead, outcome),
+      nextFollowupDate: getNextFollowupDateForNewFollowup(
+        lead,
+        leadFollowups,
+        followupDate,
+        outcome,
+      ),
       remarks: `Quick update: ${outcome}`,
       createdBy: "captain",
     });
@@ -245,13 +253,10 @@ export function LeadsClient() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-1">
-                          <input
-                            type="date"
-                            className={`${inputClasses} min-h-9 rounded-xl text-xs`}
-                            value={lead.nextFollowupDate}
-                            title="Update next follow-up date"
-                            onChange={(event) => updateLead(lead.id, { nextFollowupDate: event.target.value })}
-                          />
+                          <div className={`${inputClasses} flex min-h-9 items-center rounded-xl bg-surface-soft text-xs text-muted`}>
+                            {formatDate(lead.nextFollowupDate, "No next follow-up")}
+                          </div>
+                          <Badge tone="info">Auto</Badge>
                           {isOverdue(lead.nextFollowupDate) ? <Badge tone="danger">Overdue</Badge> : null}
                           {!lead.nextFollowupDate ? <Badge tone="muted">No follow-up date</Badge> : null}
                           {isToday(lead.nextFollowupDate) ? <Badge tone="success">Today</Badge> : null}
@@ -409,13 +414,6 @@ function QuickFollowupButton({
       {label}
     </Button>
   );
-}
-
-function getQuickNextFollowupDate(lead: Lead, outcome: FollowupOutcome) {
-  if (outcome === "Rejected" || outcome === "Converted") return "";
-  if (outcome === "No Response") return offsetDate(1);
-  if (outcome === "Details Sent") return offsetDate(2);
-  return lead.nextFollowupDate || offsetDate(1);
 }
 
 function FilterSelect({

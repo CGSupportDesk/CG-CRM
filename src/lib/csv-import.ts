@@ -1,4 +1,8 @@
 import Papa from "papaparse";
+import {
+  getInitialLeadNextFollowupDate,
+  getNextFollowupDateAfterContact,
+} from "./followup-schedule";
 import type {
   FollowupOutcome,
   FollowupType,
@@ -78,7 +82,7 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
     expectedValue: 5000,
     objectionReason: leadStage === "Rejected" ? "Other" : "",
     firstContactDate: contactDate,
-    nextFollowupDate: "",
+    nextFollowupDate: getInitialLeadNextFollowupDate(contactDate, leadStage),
     assignedTo: "captain",
     remarks,
   };
@@ -86,19 +90,23 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
   const followups = ["followup1", "followup2", "followup3", "followup4"]
     .map((key) => parsePossibleDate(get(key as keyof typeof headerMap)))
     .filter(Boolean)
-    .map((date, index) => ({
-      followupDate: date,
-      followupType: "Call" as FollowupType,
-      outcome: index === 0 && leadStage === "No Response"
+    .map((date, index) => {
+      const outcome = index === 0 && leadStage === "No Response"
         ? ("No Response" as FollowupOutcome)
-        : ("Call Back Later" as FollowupOutcome),
-      nextFollowupDate: "",
-      remarks: `Imported from Followup ${index + 1}`,
-      createdBy: "captain",
-    }));
+        : ("Call Back Later" as FollowupOutcome);
+
+      return {
+        followupDate: date,
+        followupType: "Call" as FollowupType,
+        outcome,
+        nextFollowupDate: getNextFollowupDateAfterContact(date, index + 2, outcome),
+        remarks: `Imported from Followup ${index + 1}`,
+        createdBy: "captain",
+      };
+    });
 
   if (followups.length > 0) {
-    lead.nextFollowupDate = followups[followups.length - 1].followupDate;
+    lead.nextFollowupDate = followups[followups.length - 1].nextFollowupDate;
   }
 
   return { rowNumber, lead, followups, warnings };

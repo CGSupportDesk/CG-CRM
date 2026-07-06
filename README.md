@@ -77,6 +77,17 @@ The Leads page includes a CSV Import panel for the old tracker fields:
 
 The importer previews rows before import, maps HOT/WARM/REJECTED/NO RESPONSE statuses, creates unlimited follow-up records from Followup 1-4 dates, and allows missing phone numbers.
 
+## Automated Follow-up Schedule
+
+Growth Engine automatically generates next follow-up dates using working days only:
+
+- 2nd contact: next working day after first contact
+- 3rd contact: 2 working days after 2nd contact
+- 4th contact: 2 working days after 3rd contact
+- 5th contact: 3 working days after 4th contact
+
+Saturday and Sunday are skipped. If a calculated date lands on a weekend, it moves to the next Monday.
+
 ## Scripts
 
 ```bash

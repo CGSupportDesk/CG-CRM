@@ -8,6 +8,7 @@ import {
   objectionReasonOptions,
   serviceInterestOptions,
 } from "@/lib/constants";
+import { getInitialLeadNextFollowupDate } from "@/lib/followup-schedule";
 import type { Lead, LeadDraft } from "@/lib/types";
 
 const defaultDraft: LeadDraft = {
@@ -68,6 +69,10 @@ export function LeadForm({
   );
   const [draft, setDraft] = useState<LeadDraft>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const calculatedNextFollowupDate = getInitialLeadNextFollowupDate(
+    draft.firstContactDate,
+    draft.leadStage,
+  );
 
   function setField<Key extends keyof LeadDraft>(key: Key, value: LeadDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -84,20 +89,13 @@ export function LeadForm({
     if (draft.expectedValue < 0) {
       nextErrors.expectedValue = "Expected value cannot be negative.";
     }
-    if (
-      draft.firstContactDate &&
-      draft.nextFollowupDate &&
-      draft.nextFollowupDate < draft.firstContactDate
-    ) {
-      nextErrors.nextFollowupDate = "Next follow-up cannot be before first contact.";
-    }
-
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) {
       onSubmit({
         ...draft,
         leadName: draft.leadName.trim() || draft.businessName.trim(),
         businessName: draft.businessName.trim() || draft.leadName.trim(),
+        nextFollowupDate: calculatedNextFollowupDate,
       });
     }
   }
@@ -206,11 +204,12 @@ export function LeadForm({
           onChange={(value) => setField("firstContactDate", value)}
         />
         <TextField
-          label="Next Follow-up Date"
+          label="Next Follow-up Date (Auto)"
           type="date"
-          value={draft.nextFollowupDate}
-          onChange={(value) => setField("nextFollowupDate", value)}
-          error={errors.nextFollowupDate}
+          value={calculatedNextFollowupDate}
+          onChange={() => undefined}
+          placeholder="Generated after first contact"
+          readOnly
         />
         <TextField
           label="Assigned To"
@@ -244,6 +243,7 @@ function TextField({
   placeholder,
   error,
   type = "text",
+  readOnly = false,
 }: {
   label: string;
   value: string;
@@ -251,14 +251,16 @@ function TextField({
   placeholder?: string;
   error?: string;
   type?: string;
+  readOnly?: boolean;
 }) {
   return (
     <FieldLabel label={label} error={error}>
       <input
-        className={inputClasses}
+        className={`${inputClasses} ${readOnly ? "bg-surface-soft text-muted" : ""}`}
         type={type}
         value={value}
         placeholder={placeholder}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
       />
     </FieldLabel>

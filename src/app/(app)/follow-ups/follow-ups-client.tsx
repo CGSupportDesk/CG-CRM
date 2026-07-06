@@ -131,12 +131,9 @@ export function FollowUpsClient() {
                             </select>
                           </td>
                           <td className="px-4 py-4">
-                            <input
-                              type="date"
-                              className={inputClasses}
-                              value={followup.nextFollowupDate}
-                              onChange={(event) => updateFollowup(followup.id, { nextFollowupDate: event.target.value })}
-                            />
+                            <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+                              {formatDate(followup.nextFollowupDate, "No next follow-up")}
+                            </div>
                           </td>
                           <td className="max-w-[260px] px-4 py-4 text-muted">{followup.remarks || "No remarks"}</td>
                           <td className="px-4 py-4">
@@ -164,6 +161,7 @@ export function FollowUpsClient() {
         <Modal title="Add follow-up" description="Log a call, WhatsApp, Instagram DM, or meeting and set the next date." onClose={() => setShowForm(false)}>
           <FollowupForm
             leads={leads.filter((lead) => !lead.isArchived)}
+            followups={followups}
             fixedLeadId={selectedLeadId || undefined}
             onSubmit={submitFollowup}
             onCancel={() => setShowForm(false)}

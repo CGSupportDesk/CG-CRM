@@ -9,7 +9,11 @@ import type {
   ObjectionReason,
   ServiceInterest,
 } from "./types";
-import { cleanPhone, createId, todayIso } from "./utils";
+import {
+  getInitialLeadNextFollowupDate,
+  getNextFollowupDateAfterContact,
+} from "./followup-schedule";
+import { cleanPhone, createId } from "./utils";
 
 const CAMPAIGN_YEAR = 2026;
 const CAMPAIGN_EXPECTED_VALUE = 5000;
@@ -70,7 +74,11 @@ function buildLead(row: TrackerRow): Lead {
   const { leadTemperature, leadStage } = mapStatus(row.status, row.contactDate);
   const followupDates = row.followupDates.map(parseCampaignDate).filter(Boolean);
   const firstContactDate = parseCampaignDate(row.contactDate);
-  const nextFollowupDate = leadStage === "Rejected" ? "" : pickNextFollowupDate(followupDates);
+  const nextFollowupDate = getCampaignNextFollowupDate(
+    firstContactDate,
+    followupDates,
+    leadStage,
+  );
   const remarks = [row.remarks, nameNote ? `Lead note: ${nameNote}` : ""]
     .filter(Boolean)
     .join("\n");
@@ -104,17 +112,21 @@ function buildLead(row: TrackerRow): Lead {
 function buildFollowups(row: TrackerRow, lead: Lead): Followup[] {
   const dates = row.followupDates.map(parseCampaignDate).filter(Boolean);
 
-  return dates.map((followupDate, index) => ({
-    id: createId("followup"),
-    leadId: lead.id,
-    followupDate,
-    followupType: "Call",
-    outcome: inferFollowupOutcome(lead, row.remarks),
-    nextFollowupDate: dates[index + 1] || "",
-    remarks: `Poster campaign Followup ${index + 1}`,
-    createdBy: "captain",
-    createdAt: dateTimeFromCampaignDate(followupDate, 10 + index),
-  }));
+  return dates.map((followupDate, index) => {
+    const outcome = inferFollowupOutcome(lead, row.remarks);
+
+    return {
+      id: createId("followup"),
+      leadId: lead.id,
+      followupDate,
+      followupType: "Call",
+      outcome,
+      nextFollowupDate: getNextFollowupDateAfterContact(followupDate, index + 2, outcome),
+      remarks: `Poster campaign Followup ${index + 1}`,
+      createdBy: "captain",
+      createdAt: dateTimeFromCampaignDate(followupDate, 10 + index),
+    };
+  });
 }
 
 function buildActivityLogs(lead: Lead): ActivityLog[] {
@@ -255,9 +267,20 @@ function parseCampaignDate(value: string) {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function pickNextFollowupDate(dates: string[]) {
-  const today = todayIso();
-  return dates.find((date) => date >= today) || dates[dates.length - 1] || "";
+function getCampaignNextFollowupDate(
+  firstContactDate: string,
+  followupDates: string[],
+  leadStage: LeadStage,
+) {
+  if (leadStage === "Rejected") return "";
+  if (!followupDates.length) {
+    return getInitialLeadNextFollowupDate(firstContactDate, leadStage);
+  }
+
+  return getNextFollowupDateAfterContact(
+    followupDates[followupDates.length - 1],
+    followupDates.length + 1,
+  );
 }
 
 function dateTimeFromCampaignDate(value: string, hour: number) {

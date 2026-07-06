@@ -1,6 +1,12 @@
 import "server-only";
 
 import { neon } from "@neondatabase/serverless";
+import {
+  getNextFollowupDateForLead,
+  getNextFollowupDateForNewFollowup,
+  getScheduledNextDateForFollowup,
+  sortFollowups,
+} from "@/lib/followup-schedule";
 import { buildPosterCampaignSeed } from "@/lib/poster-campaign";
 import type {
   ActivityLog,
@@ -18,6 +24,7 @@ type SqlClient = ReturnType<typeof neon>;
 
 let sqlClient: SqlClient | null = null;
 let schemaPromise: Promise<void> | null = null;
+let scheduleRefreshPromise: Promise<void> | null = null;
 
 export function hasDatabaseUrl() {
   return Boolean(getDatabaseUrl());
@@ -40,6 +47,7 @@ function getSql() {
 export async function getCrmState() {
   await ensureCrmSchema();
   await seedDatabaseIfEmpty();
+  await refreshAllFollowupSchedulesOnce();
   return readCrmState();
 }
 
@@ -47,13 +55,13 @@ export async function addLeadRecord(leadDraft: LeadDraft) {
   await ensureCrmSchema();
 
   const now = new Date().toISOString();
-  const lead: Lead = {
+  const lead: Lead = applyLeadSchedule({
     ...leadDraft,
     id: createId("lead"),
     isArchived: false,
     createdAt: now,
     updatedAt: now,
-  };
+  }, []);
   const log = buildLog(lead.id, "Lead created", "", lead.leadStage);
 
   const sql = getSql();
@@ -74,9 +82,11 @@ export async function updateLeadRecord(id: string, changes: Partial<LeadDraft>) 
     ...changes,
     updatedAt: new Date().toISOString(),
   };
-  const logs = buildChangeLogs(existing, updated);
+  const followups = await getFollowupsByLeadId(id);
+  const scheduledUpdated = applyLeadSchedule(updated, followups);
+  const logs = buildChangeLogs(existing, scheduledUpdated);
 
-  await updateLead(updated);
+  await updateLead(scheduledUpdated);
   await insertLogs(logs);
 
   return { state: await readCrmState() };
@@ -105,12 +115,22 @@ export async function deleteLeadRecord(id: string) {
 export async function addFollowupRecord(draft: FollowupDraft) {
   await ensureCrmSchema();
 
+  const lead = await getLeadById(draft.leadId);
+  const existingFollowups = await getFollowupsByLeadId(draft.leadId);
+  const nextFollowupDate = lead
+    ? getNextFollowupDateForNewFollowup(
+        lead,
+        existingFollowups,
+        draft.followupDate,
+        draft.outcome,
+      )
+    : draft.nextFollowupDate;
   const followup: Followup = {
     ...draft,
+    nextFollowupDate,
     id: createId("followup"),
     createdAt: new Date().toISOString(),
   };
-  const lead = await getLeadById(draft.leadId);
   const inferredStage = inferLeadStageFromOutcome(draft.outcome, lead?.leadStage);
 
   const sql = getSql();
@@ -120,7 +140,7 @@ export async function addFollowupRecord(draft: FollowupDraft) {
     const updatedLead: Lead = {
       ...lead,
       leadStage: inferredStage,
-      nextFollowupDate: draft.nextFollowupDate,
+      nextFollowupDate,
       updatedAt: new Date().toISOString(),
     };
     await updateLead(updatedLead);
@@ -146,7 +166,7 @@ export async function updateFollowupRecord(id: string, changes: Partial<Followup
   const existing = rows[0] ? mapFollowup(rows[0]) : null;
   if (!existing) return { state: await readCrmState(sql) };
 
-  const updated: Followup = { ...existing, ...changes };
+  const updated: Followup = { ...existing, ...changes, nextFollowupDate: existing.nextFollowupDate };
   await sql`
     update followups
     set
@@ -160,13 +180,8 @@ export async function updateFollowupRecord(id: string, changes: Partial<Followup
     where id = ${id}
   `;
 
-  if ("nextFollowupDate" in changes) {
-    await sql`
-      update leads
-      set next_followup_date = ${dateOrNull(updated.nextFollowupDate)}, updated_at = ${new Date().toISOString()}
-      where id = ${updated.leadId}
-    `;
-  }
+  await rescheduleLeadFollowups(updated.leadId);
+  if (existing.leadId !== updated.leadId) await rescheduleLeadFollowups(existing.leadId);
 
   await insertLogs([
     buildLog(updated.leadId, "Follow-up updated", existing.outcome, updated.outcome),
@@ -187,7 +202,7 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
     updatedAt: now,
   }));
   const leadByRow = new Map(rows.map((row, index) => [row.rowNumber, importedLeads[index]]));
-  const importedFollowups: Followup[] = rows.flatMap((row) => {
+  const rawImportedFollowups: Followup[] = rows.flatMap((row) => {
     const lead = leadByRow.get(row.rowNumber);
     if (!lead) return [];
 
@@ -198,11 +213,21 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
       createdAt: now,
     }));
   });
+  const groupedFollowups = new Map<string, Followup[]>();
+  rawImportedFollowups.forEach((followup) => {
+    const current = groupedFollowups.get(followup.leadId) || [];
+    groupedFollowups.set(followup.leadId, [...current, followup]);
+  });
+  const scheduledPairs = importedLeads.map((lead) =>
+    applyScheduleToLeadAndFollowups(lead, groupedFollowups.get(lead.id) || []),
+  );
+  const scheduledLeads = scheduledPairs.map((pair) => pair.lead);
+  const importedFollowups = scheduledPairs.flatMap((pair) => pair.followups);
   const logs = importedLeads.map((lead) =>
     buildLog(lead.id, "Lead imported from CSV", "", lead.leadStage),
   );
 
-  await insertLeads(importedLeads);
+  await insertLeads(scheduledLeads);
   await insertFollowups(importedFollowups);
   await insertLogs(logs);
 
@@ -330,6 +355,104 @@ async function getLeadById(id: string) {
     Record<string, unknown>
   >;
   return rows[0] ? mapLead(rows[0]) : null;
+}
+
+async function getFollowupsByLeadId(leadId: string) {
+  const sql = getSql();
+  const rows = (await sql`
+    select * from followups
+    where lead_id = ${leadId}
+    order by followup_date asc, created_at asc
+  `) as Array<Record<string, unknown>>;
+
+  return rows.map(mapFollowup);
+}
+
+async function refreshAllFollowupSchedules() {
+  const sql = getSql();
+  const [leadRows, followupRows] = (await Promise.all([
+    sql`select * from leads`,
+    sql`select * from followups order by followup_date asc, created_at asc`,
+  ])) as [Array<Record<string, unknown>>, Array<Record<string, unknown>>];
+  const leads = leadRows.map(mapLead);
+  const followups = followupRows.map(mapFollowup);
+  const followupsByLead = new Map<string, Followup[]>();
+
+  followups.forEach((followup) => {
+    const current = followupsByLead.get(followup.leadId) || [];
+    followupsByLead.set(followup.leadId, [...current, followup]);
+  });
+
+  for (const lead of leads) {
+    await writeScheduleChanges(
+      applyScheduleToLeadAndFollowups(lead, followupsByLead.get(lead.id) || []),
+    );
+  }
+}
+
+async function refreshAllFollowupSchedulesOnce() {
+  scheduleRefreshPromise ??= refreshAllFollowupSchedules().catch((error) => {
+    scheduleRefreshPromise = null;
+    throw error;
+  });
+
+  return scheduleRefreshPromise;
+}
+
+async function rescheduleLeadFollowups(leadId: string) {
+  const lead = await getLeadById(leadId);
+  if (!lead) return;
+
+  const followups = await getFollowupsByLeadId(leadId);
+  await writeScheduleChanges(applyScheduleToLeadAndFollowups(lead, followups));
+}
+
+async function writeScheduleChanges({
+  lead,
+  followups,
+}: {
+  lead: Lead;
+  followups: Followup[];
+}) {
+  const sql = getSql();
+  const currentLead = await getLeadById(lead.id);
+
+  if (currentLead && currentLead.nextFollowupDate !== lead.nextFollowupDate) {
+    await sql`
+      update leads
+      set next_followup_date = ${dateOrNull(lead.nextFollowupDate)}, updated_at = ${new Date().toISOString()}
+      where id = ${lead.id}
+    `;
+  }
+
+  for (const followup of followups) {
+    await sql`
+      update followups
+      set next_followup_date = ${dateOrNull(followup.nextFollowupDate)}
+      where id = ${followup.id}
+        and coalesce(next_followup_date::text, '') <> ${followup.nextFollowupDate}
+    `;
+  }
+}
+
+function applyLeadSchedule(lead: Lead, followups: Followup[]) {
+  return {
+    ...lead,
+    nextFollowupDate: getNextFollowupDateForLead(lead, followups),
+  };
+}
+
+function applyScheduleToLeadAndFollowups(lead: Lead, followups: Followup[]) {
+  const sortedFollowups = sortFollowups(followups);
+  const scheduledFollowups = sortedFollowups.map((followup, index) => ({
+    ...followup,
+    nextFollowupDate: getScheduledNextDateForFollowup(followup, index),
+  }));
+
+  return {
+    lead: applyLeadSchedule(lead, scheduledFollowups),
+    followups: scheduledFollowups,
+  };
 }
 
 async function insertLead(lead: Lead) {

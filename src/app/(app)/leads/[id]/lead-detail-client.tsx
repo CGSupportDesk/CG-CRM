@@ -55,16 +55,16 @@ export function LeadDetailClient({ id }: { id: string }) {
   }
 
   function quickUpdate(changes: Partial<LeadDraft>) {
-    updateLead(id, changes);
+    void updateLead(id, changes);
   }
 
   function submitFollowup(draft: FollowupDraft) {
-    addFollowup(draft);
+    void addFollowup(draft);
     setShowFollowupForm(false);
   }
 
   function submitEdit(draft: LeadDraft) {
-    updateLead(id, draft);
+    void updateLead(id, draft);
     setShowEditForm(false);
   }
 
@@ -143,12 +143,9 @@ export function LeadDetailClient({ id }: { id: string }) {
               </select>
             </FieldLabel>
             <FieldLabel label="Next Follow-up">
-              <input
-                type="date"
-                className={inputClasses}
-                value={lead.nextFollowupDate}
-                onChange={(event) => quickUpdate({ nextFollowupDate: event.target.value })}
-              />
+              <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+                {formatDate(lead.nextFollowupDate, "No next follow-up")}
+              </div>
             </FieldLabel>
           </div>
           <div className="flex flex-wrap gap-2 border-t border-border pt-5">
@@ -232,6 +229,7 @@ export function LeadDetailClient({ id }: { id: string }) {
         <Modal title="Add follow-up" description="Create an unlimited follow-up record for this lead." onClose={() => setShowFollowupForm(false)}>
           <FollowupForm
             leads={[lead]}
+            followups={leadFollowups}
             fixedLeadId={lead.id}
             onSubmit={submitFollowup}
             onCancel={() => setShowFollowupForm(false)}
