@@ -102,14 +102,14 @@ export function CsvImporter() {
       {loading ? (
         <EmptyState
           title="Reading CSV"
-          description="Parsing lead rows, status mapping, contact dates, and Followup 1-4 columns."
+          description="Parsing lead rows, status mapping, and contact dates for automatic next follow-ups."
         />
       ) : null}
 
       {summary ? (
         <div className="grid gap-3 sm:grid-cols-3">
           <ImportMetric label="Leads imported" value={summary.leadsImported} />
-          <ImportMetric label="Follow-ups created" value={summary.followupsImported} />
+          <ImportMetric label="Follow-up records created" value={summary.followupsImported} />
           <ImportMetric label="Skipped rows" value={summary.skippedRows} />
         </div>
       ) : null}
@@ -168,7 +168,7 @@ export function CsvImporter() {
                     <th className="px-4 py-3">Phone</th>
                     <th className="px-4 py-3">Mapped Status</th>
                     <th className="px-4 py-3">First Contact</th>
-                    <th className="px-4 py-3">Follow-ups</th>
+                    <th className="px-4 py-3">Auto Next</th>
                     <th className="px-4 py-3">Warnings</th>
                   </tr>
                 </thead>
@@ -185,7 +185,7 @@ export function CsvImporter() {
                         </div>
                       </td>
                       <td className="px-4 py-3">{formatDate(row.lead.firstContactDate)}</td>
-                      <td className="px-4 py-3">{row.followups.length}</td>
+                      <td className="px-4 py-3">{formatDate(row.lead.nextFollowupDate, "No next date")}</td>
                       <td className="px-4 py-3 text-xs leading-5 text-muted">
                         {row.warnings.length ? row.warnings.join(" ") : "Ready"}
                       </td>
@@ -199,7 +199,7 @@ export function CsvImporter() {
       ) : (
         <EmptyState
           title="No CSV or Excel selected"
-          description="Expected columns: Lead Url, Lead Name, Contact Number, Status, Contact Date, Followup 1-4, and Remarks."
+          description="Expected columns: Lead Url, Lead Name, Contact Number, Status, Contact Date, and Remarks. Old Followup 1-4 columns are ignored for scheduling."
         />
       )}
     </Panel>

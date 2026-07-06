@@ -1,18 +1,13 @@
 import type {
   ActivityLog,
   CRMState,
-  Followup,
-  FollowupOutcome,
   Lead,
   LeadStage,
   LeadTemperature,
   ObjectionReason,
   ServiceInterest,
 } from "./types";
-import {
-  getInitialLeadNextFollowupDate,
-  getNextFollowupDateAfterContact,
-} from "./followup-schedule";
+import { getInitialLeadNextFollowupDate } from "./followup-schedule";
 import { DEFAULT_ASSIGNEE } from "./constants";
 import { inferIndustryFromLeadText, normalizeLeadSource } from "./lead-normalization";
 import { cleanPhone, createId } from "./utils";
@@ -28,19 +23,15 @@ interface TrackerRow {
   phone: string;
   status: string;
   contactDate: string;
-  followupDates: string[];
   remarks: string;
 }
 
 export function buildPosterCampaignSeed(trackerTsv: string): CRMState {
   const trackerRows = parsePosterCampaignTracker(trackerTsv);
   const leads: Lead[] = trackerRows.map((row) => buildLead(row));
-  const followups: Followup[] = trackerRows.flatMap((row, index) =>
-    buildFollowups(row, leads[index]),
-  );
   const activityLogs: ActivityLog[] = leads.flatMap((lead) => buildActivityLogs(lead));
 
-  return { leads, followups, activityLogs, clients: [], projects: [], posterSlots: [], settings: [] };
+  return { leads, followups: [], activityLogs, clients: [], projects: [], posterSlots: [], settings: [] };
 }
 
 function parsePosterCampaignTracker(trackerTsv: string): TrackerRow[] {
@@ -61,7 +52,6 @@ function parsePosterCampaignTracker(trackerTsv: string): TrackerRow[] {
         phone: cells[2],
         status: cells[3],
         contactDate: cells[4],
-        followupDates: cells.slice(5, 9),
         remarks: cells[9],
       };
     })
@@ -74,13 +64,8 @@ function buildLead(row: TrackerRow): Lead {
   const { contactPerson, nameNote } = normalizeContactPerson(row.leadName);
   const businessName = inferBusinessName(row.leadUrl, contactPerson);
   const { leadTemperature, leadStage } = mapStatus(row.status, row.contactDate);
-  const followupDates = row.followupDates.map(parseCampaignDate).filter(Boolean);
   const firstContactDate = parseCampaignDate(row.contactDate);
-  const nextFollowupDate = getCampaignNextFollowupDate(
-    firstContactDate,
-    followupDates,
-    leadStage,
-  );
+  const nextFollowupDate = getCampaignNextFollowupDate(firstContactDate, leadStage);
   const remarks = [row.remarks, nameNote ? `Lead note: ${nameNote}` : ""]
     .filter(Boolean)
     .join("\n");
@@ -112,26 +97,6 @@ function buildLead(row: TrackerRow): Lead {
     createdAt: dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 9),
     updatedAt: dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 12),
   };
-}
-
-function buildFollowups(row: TrackerRow, lead: Lead): Followup[] {
-  const dates = row.followupDates.map(parseCampaignDate).filter(Boolean);
-
-  return dates.map((followupDate, index) => {
-    const outcome = inferFollowupOutcome(lead, row.remarks);
-
-    return {
-      id: createId("followup"),
-      leadId: lead.id,
-      followupDate,
-      followupType: "Call",
-      outcome,
-      nextFollowupDate: getNextFollowupDateAfterContact(followupDate, index + 2, outcome),
-      remarks: `Poster campaign Followup ${index + 1}`,
-      createdBy: "captain",
-      createdAt: dateTimeFromCampaignDate(followupDate, 10 + index),
-    };
-  });
 }
 
 function buildActivityLogs(lead: Lead): ActivityLog[] {
@@ -168,6 +133,9 @@ function mapStatus(
   }
   if (status.includes("WARM")) {
     return { leadTemperature: "Warm", leadStage: "Follow-up Needed" };
+  }
+  if (status.includes("SELECT") || status.includes("WON") || status.includes("CONVERT")) {
+    return { leadTemperature: "Hot", leadStage: "Won" };
   }
   if (status.includes("REJECT")) {
     return { leadTemperature: "Cold", leadStage: "Rejected" };
@@ -206,19 +174,6 @@ function inferObjectionReason(
   if (leadStage === "Rejected") return "Other";
 
   return "";
-}
-
-function inferFollowupOutcome(lead: Lead, remarks: string): FollowupOutcome {
-  const text = remarks.toLowerCase();
-
-  if (lead.leadStage === "Rejected") return "Rejected";
-  if (lead.leadStage === "No Response") return "No Response";
-  if (text.includes("details") || text.includes("msg") || text.includes("whatsapp")) {
-    return "Details Sent";
-  }
-  if (lead.leadTemperature === "Hot") return "Interested";
-
-  return "Call Back Later";
 }
 
 function normalizeContactPerson(rawName: string) {
@@ -274,18 +229,9 @@ function parseCampaignDate(value: string) {
 
 function getCampaignNextFollowupDate(
   firstContactDate: string,
-  followupDates: string[],
   leadStage: LeadStage,
 ) {
-  if (leadStage === "Rejected") return "";
-  if (!followupDates.length) {
-    return getInitialLeadNextFollowupDate(firstContactDate, leadStage);
-  }
-
-  return getNextFollowupDateAfterContact(
-    followupDates[followupDates.length - 1],
-    followupDates.length + 1,
-  );
+  return getInitialLeadNextFollowupDate(firstContactDate, leadStage);
 }
 
 function dateTimeFromCampaignDate(value: string, hour: number) {

@@ -1,13 +1,8 @@
 import Papa from "papaparse";
-import {
-  getInitialLeadNextFollowupDate,
-  getNextFollowupDateAfterContact,
-} from "./followup-schedule";
+import { getInitialLeadNextFollowupDate } from "./followup-schedule";
 import { DEFAULT_ASSIGNEE } from "./constants";
 import { inferIndustryFromLeadText, normalizeLeadSource } from "./lead-normalization";
 import type {
-  FollowupOutcome,
-  FollowupType,
   ImportPreview,
   ImportPreviewRow,
   LeadDraft,
@@ -92,29 +87,16 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
     remarks,
   };
 
-  const followups = ["followup1", "followup2", "followup3", "followup4"]
+  const legacyFollowupDates = ["followup1", "followup2", "followup3", "followup4"]
     .map((key) => parsePossibleDate(get(key as keyof typeof headerMap)))
-    .filter(Boolean)
-    .map((date, index) => {
-      const outcome = index === 0 && leadStage === "No Response"
-        ? ("No Response" as FollowupOutcome)
-        : ("Call Back Later" as FollowupOutcome);
-
-      return {
-        followupDate: date,
-        followupType: "Call" as FollowupType,
-        outcome,
-        nextFollowupDate: getNextFollowupDateAfterContact(date, index + 2, outcome),
-        remarks: `Imported from Followup ${index + 1}`,
-        createdBy: "captain",
-      };
-    });
-
-  if (followups.length > 0) {
-    lead.nextFollowupDate = followups[followups.length - 1].nextFollowupDate;
+    .filter(Boolean);
+  if (legacyFollowupDates.length > 0) {
+    warnings.push(
+      "Legacy Followup 1-4 dates were ignored; next follow-up is calculated from Contact Date.",
+    );
   }
 
-  return { rowNumber, lead, followups, warnings };
+  return { rowNumber, lead, followups: [], warnings };
 }
 
 function getField(row: RawCsvRow, candidates: string[]) {
@@ -140,6 +122,9 @@ function mapStatus(status: string, contactDate: string): {
   }
   if (value.includes("WARM")) {
     return { leadTemperature: "Warm", leadStage: "Follow-up Needed" };
+  }
+  if (value.includes("SELECT") || value.includes("WON") || value.includes("CONVERT")) {
+    return { leadTemperature: "Hot", leadStage: "Won" };
   }
   if (value.includes("REJECT")) {
     return { leadTemperature: "Cold", leadStage: "Rejected" };
