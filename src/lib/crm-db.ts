@@ -20,7 +20,7 @@ import type {
   Lead,
   LeadDraft,
 } from "@/lib/types";
-import { createId } from "@/lib/utils";
+import { createId, dateOnlyText } from "@/lib/utils";
 
 type SqlClient = ReturnType<typeof neon>;
 
@@ -778,7 +778,7 @@ function text(value: unknown) {
 
 function dateText(value: unknown) {
   if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return dateOnlyText(value);
   return String(value).slice(0, 10);
 }
 

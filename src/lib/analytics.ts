@@ -1,8 +1,14 @@
 import type { Followup, Lead, LeadStage, LeadTemperature } from "./types";
 import { isOverdue, isToday, startOfWeekIso, todayIso } from "./utils";
 
+const terminalLeadStages: LeadStage[] = ["Won", "Lost", "Rejected"];
+
 export function activeLeads(leads: Lead[]) {
   return leads.filter((lead) => !lead.isArchived);
+}
+
+export function openLeads(leads: Lead[]) {
+  return activeLeads(leads).filter((lead) => !isTerminalLead(lead));
 }
 
 export function getKpis(leads: Lead[]) {
@@ -60,12 +66,14 @@ export function objectionChart(leads: Lead[]) {
 }
 
 export function followupDueChart(leads: Lead[]) {
-  const active = activeLeads(leads);
+  const open = openLeads(leads);
+  const closed = activeLeads(leads).filter(isTerminalLead);
   return {
-    Overdue: active.filter((lead) => isOverdue(lead.nextFollowupDate)).length,
-    Today: active.filter((lead) => isToday(lead.nextFollowupDate)).length,
-    Upcoming: active.filter((lead) => lead.nextFollowupDate && lead.nextFollowupDate > todayIso()).length,
-    "No Date": active.filter((lead) => !lead.nextFollowupDate).length,
+    Overdue: open.filter((lead) => isOverdue(lead.nextFollowupDate)).length,
+    Today: open.filter((lead) => isToday(lead.nextFollowupDate)).length,
+    Upcoming: open.filter((lead) => lead.nextFollowupDate && lead.nextFollowupDate > todayIso()).length,
+    "No Date": open.filter((lead) => !lead.nextFollowupDate).length,
+    Closed: closed.length,
   };
 }
 
@@ -79,7 +87,7 @@ export function getFollowupTasks(leads: Lead[], followups: Followup[]) {
     });
 
   return activeLeads(leads)
-    .filter((lead) => !["Won", "Lost", "Rejected"].includes(lead.leadStage))
+    .filter((lead) => !isTerminalLead(lead))
     .map((lead) => ({
       lead,
       latestFollowup: latestByLead.get(lead.id) || null,
@@ -96,9 +104,13 @@ export function monthlyConversionRows(leads: Lead[]) {
     acc[month] ||= { month, leads: 0, won: 0, expected: 0 };
     acc[month].leads += 1;
     if (lead.leadStage === "Won") acc[month].won += 1;
-    acc[month].expected += lead.expectedValue;
+    if (!isTerminalLead(lead) || lead.leadStage === "Won") acc[month].expected += lead.expectedValue;
     return acc;
   }, {});
 
   return Object.values(buckets).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function isTerminalLead(lead: Pick<Lead, "leadStage">) {
+  return terminalLeadStages.includes(lead.leadStage);
 }

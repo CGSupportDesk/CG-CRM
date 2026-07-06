@@ -6,7 +6,7 @@ import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, Panel } from "@/components/ui";
 import { parseLegacyLeadCsv } from "@/lib/csv-import";
 import type { ImportCleanupResult, ImportCleanupRowSuggestion, ImportPreview, ImportSummary, LeadDraft } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { dateOnlyText, formatDate } from "@/lib/utils";
 
 export function CsvImporter() {
   const { importLegacyRows } = useCRM();
@@ -237,7 +237,7 @@ function trimToTrackerHeader(text: string) {
 
 function csvCell(value: unknown) {
   let text = "";
-  if (value instanceof Date) text = value.toISOString().slice(0, 10);
+  if (value instanceof Date) text = dateOnlyText(value);
   else text = value === null || value === undefined ? "" : String(value);
 
   if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;

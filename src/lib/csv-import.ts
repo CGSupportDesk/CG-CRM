@@ -67,7 +67,7 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
     warnings.push("Phone number missing or marked as No Number.");
   }
 
-  const { leadTemperature, leadStage } = mapStatus(status);
+  const { leadTemperature, leadStage } = mapStatus(status, contactDate);
   const lead: LeadDraft = {
     leadUrl,
     leadName: leadName || `Imported lead ${rowNumber}`,
@@ -129,7 +129,7 @@ function getField(row: RawCsvRow, candidates: string[]) {
   return found?.[1] || "";
 }
 
-function mapStatus(status: string): {
+function mapStatus(status: string, contactDate: string): {
   leadTemperature: LeadTemperature;
   leadStage: LeadStage;
 } {
@@ -148,8 +148,8 @@ function mapStatus(status: string): {
     return { leadTemperature: "Cold", leadStage: "No Response" };
   }
   if (value.includes("COLD")) {
-    return { leadTemperature: "Cold", leadStage: "New Lead" };
+    return { leadTemperature: "Cold", leadStage: contactDate ? "Contacted" : "New Lead" };
   }
 
-  return { leadTemperature: "Warm", leadStage: "New Lead" };
+  return { leadTemperature: "Cold", leadStage: contactDate ? "Contacted" : "New Lead" };
 }
