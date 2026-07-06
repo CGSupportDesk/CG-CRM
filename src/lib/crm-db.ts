@@ -7,6 +7,8 @@ import {
   getScheduledNextDateForFollowup,
   sortFollowups,
 } from "@/lib/followup-schedule";
+import { DEFAULT_ASSIGNEE } from "@/lib/constants";
+import { normalizeLeadForStorage } from "@/lib/lead-normalization";
 import { buildPosterCampaignSeed } from "@/lib/poster-campaign";
 import type {
   ActivityLog,
@@ -25,6 +27,7 @@ type SqlClient = ReturnType<typeof neon>;
 let sqlClient: SqlClient | null = null;
 let schemaPromise: Promise<void> | null = null;
 let scheduleRefreshPromise: Promise<void> | null = null;
+let leadDataNormalizationPromise: Promise<void> | null = null;
 
 export function hasDatabaseUrl() {
   return Boolean(getDatabaseUrl());
@@ -47,6 +50,7 @@ function getSql() {
 export async function getCrmState() {
   await ensureCrmSchema();
   await seedDatabaseIfEmpty();
+  await normalizeAllLeadDataOnce();
   await refreshAllFollowupSchedulesOnce();
   return readCrmState();
 }
@@ -55,13 +59,16 @@ export async function addLeadRecord(leadDraft: LeadDraft) {
   await ensureCrmSchema();
 
   const now = new Date().toISOString();
-  const lead: Lead = applyLeadSchedule({
-    ...leadDraft,
-    id: createId("lead"),
-    isArchived: false,
-    createdAt: now,
-    updatedAt: now,
-  }, []);
+  const lead: Lead = applyLeadSchedule(
+    normalizeLeadForStorage({
+      ...leadDraft,
+      id: createId("lead"),
+      isArchived: false,
+      createdAt: now,
+      updatedAt: now,
+    }),
+    [],
+  );
   const log = buildLog(lead.id, "Lead created", "", lead.leadStage);
 
   const sql = getSql();
@@ -77,11 +84,11 @@ export async function updateLeadRecord(id: string, changes: Partial<LeadDraft>) 
   const existing = await getLeadById(id);
   if (!existing) return { state: await readCrmState() };
 
-  const updated: Lead = {
+  const updated: Lead = normalizeLeadForStorage({
     ...existing,
     ...changes,
     updatedAt: new Date().toISOString(),
-  };
+  });
   const followups = await getFollowupsByLeadId(id);
   const scheduledUpdated = applyLeadSchedule(updated, followups);
   const logs = buildChangeLogs(existing, scheduledUpdated);
@@ -194,13 +201,18 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
   await ensureCrmSchema();
 
   const now = new Date().toISOString();
-  const importedLeads: Lead[] = rows.map((row) => ({
-    ...row.lead,
-    id: createId("lead"),
-    isArchived: false,
-    createdAt: now,
-    updatedAt: now,
-  }));
+  const importedLeads: Lead[] = rows.map((row) =>
+    normalizeLeadForStorage(
+      {
+        ...row.lead,
+        id: createId("lead"),
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+      { preferUrlSource: true, sourceFallback: "CSV Import" },
+    ),
+  );
   const leadByRow = new Map(rows.map((row, index) => [row.rowNumber, importedLeads[index]]));
   const rawImportedFollowups: Followup[] = rows.flatMap((row) => {
     const lead = leadByRow.get(row.rowNumber);
@@ -274,12 +286,14 @@ async function createSchema() {
       first_contact_date date,
       next_followup_date date,
       remarks text not null default '',
-      assigned_to text not null default 'captain',
+      assigned_to text not null default 'Naveen',
       is_archived boolean not null default false,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
   `;
+
+  await sql`alter table leads alter column assigned_to set default 'Naveen'`;
 
   await sql`
     create table if not exists followups (
@@ -399,6 +413,36 @@ async function refreshAllFollowupSchedulesOnce() {
   return scheduleRefreshPromise;
 }
 
+async function normalizeAllLeadData() {
+  const sql = getSql();
+  const rows = (await sql`select * from leads`) as Array<Record<string, unknown>>;
+  const leads = rows.map(mapLead);
+
+  for (const lead of leads) {
+    const normalized = normalizeLeadForStorage(lead, {
+      preferUrlSource: true,
+      sourceFallback: "Other",
+    });
+    const needsUpdate =
+      normalized.assignedTo !== lead.assignedTo ||
+      normalized.industry !== lead.industry ||
+      normalized.source !== lead.source;
+
+    if (needsUpdate) {
+      await updateLead({ ...normalized, updatedAt: new Date().toISOString() });
+    }
+  }
+}
+
+async function normalizeAllLeadDataOnce() {
+  leadDataNormalizationPromise ??= normalizeAllLeadData().catch((error) => {
+    leadDataNormalizationPromise = null;
+    throw error;
+  });
+
+  return leadDataNormalizationPromise;
+}
+
 async function rescheduleLeadFollowups(leadId: string) {
   const lead = await getLeadById(leadId);
   if (!lead) return;
@@ -457,6 +501,7 @@ function applyScheduleToLeadAndFollowups(lead: Lead, followups: Followup[]) {
 
 async function insertLead(lead: Lead) {
   const sql = getSql();
+  const normalizedLead = normalizeLeadForStorage(lead);
   await sql`
     insert into leads (
       id, lead_url, lead_name, business_name, contact_person, phone, email, industry, location,
@@ -464,11 +509,11 @@ async function insertLead(lead: Lead) {
       first_contact_date, next_followup_date, remarks, assigned_to, is_archived, created_at, updated_at
     )
     values (
-      ${lead.id}, ${lead.leadUrl}, ${lead.leadName}, ${lead.businessName}, ${lead.contactPerson},
-      ${lead.phone}, ${lead.email}, ${lead.industry}, ${lead.location}, ${lead.source},
-      ${lead.leadTemperature}, ${lead.leadStage}, ${lead.serviceInterest}, ${lead.expectedValue},
-      ${lead.objectionReason}, ${dateOrNull(lead.firstContactDate)}, ${dateOrNull(lead.nextFollowupDate)},
-      ${lead.remarks}, ${lead.assignedTo}, ${lead.isArchived}, ${lead.createdAt}, ${lead.updatedAt}
+      ${normalizedLead.id}, ${normalizedLead.leadUrl}, ${normalizedLead.leadName}, ${normalizedLead.businessName}, ${normalizedLead.contactPerson},
+      ${normalizedLead.phone}, ${normalizedLead.email}, ${normalizedLead.industry}, ${normalizedLead.location}, ${normalizedLead.source},
+      ${normalizedLead.leadTemperature}, ${normalizedLead.leadStage}, ${normalizedLead.serviceInterest}, ${normalizedLead.expectedValue},
+      ${normalizedLead.objectionReason}, ${dateOrNull(normalizedLead.firstContactDate)}, ${dateOrNull(normalizedLead.nextFollowupDate)},
+      ${normalizedLead.remarks}, ${normalizedLead.assignedTo}, ${normalizedLead.isArchived}, ${normalizedLead.createdAt}, ${normalizedLead.updatedAt}
     )
   `;
 }
@@ -476,6 +521,9 @@ async function insertLead(lead: Lead) {
 async function insertLeads(leads: Lead[]) {
   if (!leads.length) return;
   const sql = getSql();
+  const normalizedLeads = leads.map((lead) =>
+    normalizeLeadForStorage(lead, { preferUrlSource: true }),
+  );
 
   await sql`
     insert into leads (
@@ -502,11 +550,11 @@ async function insertLeads(leads: Lead[]) {
       nullif(x."firstContactDate", '')::date,
       nullif(x."nextFollowupDate", '')::date,
       coalesce(x."remarks", ''),
-      coalesce(x."assignedTo", 'captain'),
+      coalesce(x."assignedTo", ${DEFAULT_ASSIGNEE}),
       coalesce(x."isArchived", false),
       coalesce(nullif(x."createdAt", '')::timestamptz, now()),
       coalesce(nullif(x."updatedAt", '')::timestamptz, now())
-    from jsonb_to_recordset(${JSON.stringify(leads)}::jsonb) as x(
+    from jsonb_to_recordset(${JSON.stringify(normalizedLeads)}::jsonb) as x(
       "id" text,
       "leadUrl" text,
       "leadName" text,
@@ -536,31 +584,32 @@ async function insertLeads(leads: Lead[]) {
 
 async function updateLead(lead: Lead) {
   const sql = getSql();
+  const normalizedLead = normalizeLeadForStorage(lead);
 
   await sql`
     update leads
     set
-      lead_url = ${lead.leadUrl},
-      lead_name = ${lead.leadName},
-      business_name = ${lead.businessName},
-      contact_person = ${lead.contactPerson},
-      phone = ${lead.phone},
-      email = ${lead.email},
-      industry = ${lead.industry},
-      location = ${lead.location},
-      source = ${lead.source},
-      lead_temperature = ${lead.leadTemperature},
-      lead_stage = ${lead.leadStage},
-      service_interest = ${lead.serviceInterest},
-      expected_value = ${lead.expectedValue},
-      objection_reason = ${lead.objectionReason},
-      first_contact_date = ${dateOrNull(lead.firstContactDate)},
-      next_followup_date = ${dateOrNull(lead.nextFollowupDate)},
-      remarks = ${lead.remarks},
-      assigned_to = ${lead.assignedTo},
-      is_archived = ${lead.isArchived},
-      updated_at = ${lead.updatedAt}
-    where id = ${lead.id}
+      lead_url = ${normalizedLead.leadUrl},
+      lead_name = ${normalizedLead.leadName},
+      business_name = ${normalizedLead.businessName},
+      contact_person = ${normalizedLead.contactPerson},
+      phone = ${normalizedLead.phone},
+      email = ${normalizedLead.email},
+      industry = ${normalizedLead.industry},
+      location = ${normalizedLead.location},
+      source = ${normalizedLead.source},
+      lead_temperature = ${normalizedLead.leadTemperature},
+      lead_stage = ${normalizedLead.leadStage},
+      service_interest = ${normalizedLead.serviceInterest},
+      expected_value = ${normalizedLead.expectedValue},
+      objection_reason = ${normalizedLead.objectionReason},
+      first_contact_date = ${dateOrNull(normalizedLead.firstContactDate)},
+      next_followup_date = ${dateOrNull(normalizedLead.nextFollowupDate)},
+      remarks = ${normalizedLead.remarks},
+      assigned_to = ${normalizedLead.assignedTo},
+      is_archived = ${normalizedLead.isArchived},
+      updated_at = ${normalizedLead.updatedAt}
+    where id = ${normalizedLead.id}
   `;
 }
 

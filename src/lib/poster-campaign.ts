@@ -13,6 +13,8 @@ import {
   getInitialLeadNextFollowupDate,
   getNextFollowupDateAfterContact,
 } from "./followup-schedule";
+import { DEFAULT_ASSIGNEE } from "./constants";
+import { inferIndustryFromLeadText, normalizeLeadSource } from "./lead-normalization";
 import { cleanPhone, createId } from "./utils";
 
 const CAMPAIGN_YEAR = 2026;
@@ -91,9 +93,12 @@ function buildLead(row: TrackerRow): Lead {
     contactPerson,
     phone: normalizePhone(row.phone),
     email: "",
-    industry: inferIndustry(`${row.leadUrl} ${businessName} ${remarks}`),
+    industry: inferIndustryFromLeadText([row.leadUrl, businessName, contactPerson, remarks]),
     location: "",
-    source: row.leadUrl.includes("instagram.com") ? "Instagram" : "Web",
+    source: normalizeLeadSource("", row.leadUrl, {
+      preferUrlSource: true,
+      sourceFallback: "Instagram",
+    }),
     leadTemperature,
     leadStage,
     serviceInterest: CAMPAIGN_SERVICE_INTEREST,
@@ -102,7 +107,7 @@ function buildLead(row: TrackerRow): Lead {
     firstContactDate,
     nextFollowupDate,
     remarks,
-    assignedTo: "captain",
+    assignedTo: DEFAULT_ASSIGNEE,
     isArchived: false,
     createdAt: dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 9),
     updatedAt: dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 12),
@@ -316,43 +321,4 @@ function titleCase(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function inferIndustry(value: string) {
-  const text = value.toLowerCase();
-
-  if (
-    /\b(clinic|hospital|dental|health|neuro|tooth|scan|ayurveda|care360)\b/.test(text)
-  ) {
-    return "Healthcare";
-  }
-  if (/\b(salon|beauty|makeup|lash|aesthetic|hair|lounge)\b/.test(text)) {
-    return "Salon & Beauty";
-  }
-  if (
-    /\b(restaurant|cafe|mandhi|hotel|kitchen|brew|ruchi|baker|cake|pastr|food)\b/.test(text)
-  ) {
-    return "Restaurant & Food";
-  }
-  if (/\b(tennis|fitness|gym|martial|nutrition|academy|sports|run)\b/.test(text)) {
-    return "Fitness & Sports";
-  }
-  if (
-    /\b(builder|builders|homes|properties|interio|architect|homez|fencing|design)\b/.test(text)
-  ) {
-    return "Real Estate & Interiors";
-  }
-  if (/\b(college|school|montessori|infotech|training)\b/.test(text)) {
-    return "Education";
-  }
-  if (
-    /\b(jewel|gold|handloom|boutique|bridal|store|wear|spices|soaps|mart|fashion)\b/.test(text)
-  ) {
-    return "Retail";
-  }
-  if (/\b(event|wedding)\b/.test(text)) {
-    return "Events";
-  }
-
-  return "Poster Campaign";
 }

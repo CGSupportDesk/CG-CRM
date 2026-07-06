@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Archive, CalendarPlus, Edit3, Eye, FileUp, Plus, Search, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { CsvImporter } from "@/components/csv-importer";
 import { useCRM } from "@/components/crm-provider";
 import { LeadForm } from "@/components/lead-form";
@@ -152,30 +152,44 @@ export function LeadsClient() {
       {showImport ? <CsvImporter /> : null}
 
       <Panel className="space-y-5">
-        <div className="grid gap-3 xl:grid-cols-[1.4fr_repeat(6,minmax(130px,1fr))]">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <input
-              className={`${inputClasses} pl-10`}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search lead name, business, phone, or URL"
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.25fr)_repeat(6,minmax(112px,1fr))]">
+          <FilterField label="Search">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                className={`${inputClasses} pl-10`}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Lead, phone, URL"
+              />
+            </div>
+          </FilterField>
+          <FilterField label="Temperature">
+            <FilterSelect value={temperature} onChange={setTemperature} options={["all", ...leadTemperatureOptions]} />
+          </FilterField>
+          <FilterField label="Stage">
+            <FilterSelect value={stage} onChange={setStage} options={["all", ...leadStageOptions]} />
+          </FilterField>
+          <FilterField label="Industry">
+            <FilterSelect value={industry} onChange={setIndustry} options={["all", ...industries]} />
+          </FilterField>
+          <FilterField label="Service">
+            <FilterSelect value={service} onChange={setService} options={["all", ...serviceInterestOptions]} />
+          </FilterField>
+          <FilterField label="Follow-up">
+            <FilterSelect
+              value={followupFilter}
+              onChange={(value) => setFollowupFilter(value as FollowupFilter)}
+              options={["all", "today", "overdue", "no-date", "upcoming"]}
             />
-          </label>
-          <FilterSelect value={temperature} onChange={setTemperature} options={["all", ...leadTemperatureOptions]} />
-          <FilterSelect value={stage} onChange={setStage} options={["all", ...leadStageOptions]} />
-          <FilterSelect value={industry} onChange={setIndustry} options={["all", ...industries]} />
-          <FilterSelect value={service} onChange={setService} options={["all", ...serviceInterestOptions]} />
-          <FilterSelect
-            value={followupFilter}
-            onChange={(value) => setFollowupFilter(value as FollowupFilter)}
-            options={["all", "today", "overdue", "no-date", "upcoming"]}
-          />
-          <FilterSelect
-            value={sortMode}
-            onChange={(value) => setSortMode(value as SortMode)}
-            options={["created-desc", "created-asc", "followup-asc", "temperature"]}
-          />
+          </FilterField>
+          <FilterField label="Sort">
+            <FilterSelect
+              value={sortMode}
+              onChange={(value) => setSortMode(value as SortMode)}
+              options={["created-desc", "created-asc", "followup-asc", "temperature"]}
+            />
+          </FilterField>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -197,16 +211,15 @@ export function LeadsClient() {
 
         {filteredLeads.length ? (
           <div className="overflow-hidden rounded-[20px] border border-border">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1180px] text-left text-sm">
+              <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
-                    <th className="min-w-[360px] px-4 py-3">Lead</th>
-                    <th className="min-w-[150px] px-4 py-3">Phone</th>
-                    <th className="min-w-[130px] px-4 py-3">Temperature</th>
-                    <th className="min-w-[190px] px-4 py-3">Stage</th>
-                    <th className="min-w-[190px] px-4 py-3">Next Follow-up</th>
-                    <th className="min-w-[240px] px-4 py-3">Actions</th>
+                    <th className="w-[32%] px-4 py-3">Lead</th>
+                    <th className="w-[14%] px-3 py-3">Phone</th>
+                    <th className="w-[11%] px-3 py-3">Temp</th>
+                    <th className="w-[15%] px-3 py-3">Stage</th>
+                    <th className="w-[13%] px-3 py-3">Next</th>
+                    <th className="w-[15%] px-3 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -216,11 +229,13 @@ export function LeadsClient() {
                         <Link href={`/leads/${lead.id}`} className="font-semibold hover:underline">
                           {getDisplayName(lead)}
                         </Link>
-                        <p className="mt-1 text-xs text-muted">{lead.leadUrl || lead.industry || "No URL"}</p>
+                        <p className="mt-1 truncate text-xs text-muted" title={lead.leadUrl || lead.industry || "No URL"}>
+                          {lead.leadUrl || lead.industry || "No URL"}
+                        </p>
                         <p className="mt-1 text-xs font-semibold text-foreground">
                           {lead.serviceInterest} - {formatCurrency(lead.expectedValue)}
                         </p>
-                        <div className="mt-2 max-w-[320px]">
+                        <div className="mt-2">
                           <InlineTextField
                             value={lead.remarks}
                             placeholder="Add remark"
@@ -229,7 +244,7 @@ export function LeadsClient() {
                           />
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-4">
                         <InlineTextField
                           value={lead.phone}
                           placeholder="Unavailable"
@@ -237,23 +252,23 @@ export function LeadsClient() {
                           onSave={(value) => updateLead(lead.id, { phone: value })}
                         />
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-4">
                         <InlineSelect<LeadTemperature>
                           value={lead.leadTemperature}
                           options={leadTemperatureOptions}
                           onChange={(value) => updateLead(lead.id, { leadTemperature: value })}
                         />
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-4">
                         <InlineSelect<LeadStage>
                           value={lead.leadStage}
                           options={leadStageOptions}
                           onChange={(value) => updateLead(lead.id, { leadStage: value })}
                         />
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-4">
                         <div className="flex flex-col gap-1">
-                          <div className={`${inputClasses} flex min-h-9 items-center rounded-xl bg-surface-soft text-xs text-muted`}>
+                          <div className={`${inputClasses} flex min-h-9 items-center rounded-xl bg-surface-soft px-2 text-xs text-muted`}>
                             {formatDate(lead.nextFollowupDate, "No next follow-up")}
                           </div>
                           <Badge tone="info">Auto</Badge>
@@ -262,15 +277,15 @@ export function LeadsClient() {
                           {isToday(lead.nextFollowupDate) ? <Badge tone="success">Today</Badge> : null}
                         </div>
                       </td>
-                      <td className="px-4 py-4">
-                        <div className="flex min-w-[210px] flex-col gap-2">
-                          <div className="flex flex-wrap gap-1.5">
-                            <QuickFollowupButton label="No response" outcome="No Response" onClick={() => quickLogFollowup(lead, "No Response")} />
+                      <td className="px-3 py-4">
+                        <div className="flex flex-col gap-2">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <QuickFollowupButton label="No res." outcome="No Response" onClick={() => quickLogFollowup(lead, "No Response")} />
                             <QuickFollowupButton label="Sent" outcome="Details Sent" onClick={() => quickLogFollowup(lead, "Details Sent")} />
-                            <QuickFollowupButton label="Interested" outcome="Interested" onClick={() => quickLogFollowup(lead, "Interested")} />
+                            <QuickFollowupButton label="Int." outcome="Interested" onClick={() => quickLogFollowup(lead, "Interested")} />
                             <QuickFollowupButton label="Reject" outcome="Rejected" onClick={() => quickLogFollowup(lead, "Rejected")} danger />
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="grid grid-cols-4 gap-1">
                             <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
                               <Eye className="h-4 w-4" />
                             </Link>
@@ -292,7 +307,6 @@ export function LeadsClient() {
                   ))}
                 </tbody>
               </table>
-            </div>
           </div>
         ) : (
           <EmptyState
@@ -410,9 +424,26 @@ function QuickFollowupButton({
       title={`Log ${outcome}`}
       onClick={onClick}
     >
-      <CalendarPlus className="h-3.5 w-3.5" />
+      <CalendarPlus className="hidden h-3.5 w-3.5 2xl:block" />
       {label}
     </Button>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 

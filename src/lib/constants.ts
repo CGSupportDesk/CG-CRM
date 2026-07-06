@@ -65,6 +65,22 @@ export const followupOutcomeOptions: FollowupOutcome[] = [
   "Rejected",
 ];
 
+export const DEFAULT_ASSIGNEE = "Naveen";
+
+export const assigneeOptions = [DEFAULT_ASSIGNEE, "Sachin", "Kristom"];
+
+export const DEFAULT_INDUSTRY = "Other Services";
+
+export const leadSourceOptions = [
+  "Instagram",
+  "Facebook",
+  "WhatsApp",
+  "Referral",
+  "Website",
+  "CSV Import",
+  "Other",
+];
+
 export const primaryModules = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Leads", href: "/leads" },

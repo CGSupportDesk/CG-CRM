@@ -20,7 +20,7 @@ create table if not exists leads (
   first_contact_date date,
   next_followup_date date,
   remarks text not null default '',
-  assigned_to text not null default 'captain',
+  assigned_to text not null default 'Naveen',
   is_archived boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

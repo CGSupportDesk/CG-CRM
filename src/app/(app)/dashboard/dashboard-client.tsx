@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { BarList, DonutChart, Sparkline } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, EmptyState, PageHeader, Panel, buttonClasses } from "@/components/ui";
-import { wingCards } from "@/lib/constants";
+import { DEFAULT_ASSIGNEE, wingCards } from "@/lib/constants";
 import {
   activeLeads,
   followupDueChart,
@@ -89,7 +89,7 @@ export function DashboardClient() {
                   <div>
                     <p className="font-semibold text-white">{getDisplayName(lead)}</p>
                     <p className="mt-1 text-sm text-[#cad6dc]">
-                      {latestFollowup?.outcome || lead.leadStage} - {lead.assignedTo || "captain"}
+                      {latestFollowup?.outcome || lead.leadStage} - {lead.assignedTo || DEFAULT_ASSIGNEE}
                     </p>
                   </div>
                   <Badge>{lead.leadTemperature}</Badge>

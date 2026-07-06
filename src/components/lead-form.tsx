@@ -3,12 +3,16 @@
 import { useMemo, useState } from "react";
 import { Button, FieldLabel, inputClasses } from "@/components/ui";
 import {
+  DEFAULT_ASSIGNEE,
+  assigneeOptions,
+  leadSourceOptions,
   leadStageOptions,
   leadTemperatureOptions,
   objectionReasonOptions,
   serviceInterestOptions,
 } from "@/lib/constants";
 import { getInitialLeadNextFollowupDate } from "@/lib/followup-schedule";
+import { inferLeadSourceFromUrl } from "@/lib/lead-normalization";
 import type { Lead, LeadDraft } from "@/lib/types";
 
 const defaultDraft: LeadDraft = {
@@ -28,7 +32,7 @@ const defaultDraft: LeadDraft = {
   objectionReason: "",
   firstContactDate: "",
   nextFollowupDate: "",
-  assignedTo: "captain",
+  assignedTo: DEFAULT_ASSIGNEE,
   remarks: "",
 };
 
@@ -53,7 +57,7 @@ export function LeadForm({
             email: lead.email,
             industry: lead.industry,
             location: lead.location,
-            source: lead.source,
+            source: lead.source || inferLeadSourceFromUrl(lead.leadUrl) || defaultDraft.source,
             leadTemperature: lead.leadTemperature,
             leadStage: lead.leadStage,
             serviceInterest: lead.serviceInterest,
@@ -61,7 +65,7 @@ export function LeadForm({
             objectionReason: lead.objectionReason,
             firstContactDate: lead.firstContactDate,
             nextFollowupDate: lead.nextFollowupDate,
-            assignedTo: lead.assignedTo,
+            assignedTo: lead.assignedTo || DEFAULT_ASSIGNEE,
             remarks: lead.remarks,
           }
         : defaultDraft,
@@ -69,6 +73,14 @@ export function LeadForm({
   );
   const [draft, setDraft] = useState<LeadDraft>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const sourceOptions = useMemo(
+    () => Array.from(new Set([...leadSourceOptions, draft.source].filter(Boolean))),
+    [draft.source],
+  );
+  const assigneeSelectOptions = useMemo(
+    () => Array.from(new Set([...assigneeOptions, draft.assignedTo].filter(Boolean))),
+    [draft.assignedTo],
+  );
   const calculatedNextFollowupDate = getInitialLeadNextFollowupDate(
     draft.firstContactDate,
     draft.leadStage,
@@ -76,6 +88,14 @@ export function LeadForm({
 
   function setField<Key extends keyof LeadDraft>(key: Key, value: LeadDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function setLeadUrl(value: string) {
+    setDraft((current) => ({
+      ...current,
+      leadUrl: value,
+      source: inferLeadSourceFromUrl(value) || current.source,
+    }));
   }
 
   function submit() {
@@ -112,7 +132,7 @@ export function LeadForm({
         <TextField
           label="Lead URL"
           value={draft.leadUrl}
-          onChange={(value) => setField("leadUrl", value)}
+          onChange={setLeadUrl}
           placeholder="https://www.instagram.com/example"
         />
         <TextField
@@ -159,11 +179,11 @@ export function LeadForm({
           onChange={(value) => setField("location", value)}
           placeholder="City"
         />
-        <TextField
+        <SelectField
           label="Source"
           value={draft.source}
+          options={sourceOptions}
           onChange={(value) => setField("source", value)}
-          placeholder="Instagram, Referral, Cold Call"
         />
         <SelectField
           label="Lead Temperature"
@@ -211,11 +231,11 @@ export function LeadForm({
           placeholder="Generated after first contact"
           readOnly
         />
-        <TextField
+        <SelectField
           label="Assigned To"
           value={draft.assignedTo}
+          options={assigneeSelectOptions}
           onChange={(value) => setField("assignedTo", value)}
-          placeholder="captain"
         />
       </div>
       <FieldLabel label="Remarks">

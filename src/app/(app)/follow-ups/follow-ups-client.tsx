@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { CalendarPlus, ExternalLink, Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { FollowupForm } from "@/components/followup-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
-import { followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
+import { DEFAULT_ASSIGNEE, assigneeOptions, followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
 import { getFollowupTasks } from "@/lib/analytics";
 import type { FollowupDraft } from "@/lib/types";
 import { formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
@@ -21,7 +21,8 @@ export function FollowUpsClient() {
 
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const assignedPeople = useMemo(
-    () => Array.from(new Set(leads.map((lead) => lead.assignedTo).filter(Boolean))).sort(),
+    () =>
+      Array.from(new Set([...assigneeOptions, ...leads.map((lead) => lead.assignedTo).filter(Boolean)])),
     [leads],
   );
   const tasks = getFollowupTasks(leads, followups).filter(({ lead, latestFollowup }) => {
@@ -74,9 +75,15 @@ export function FollowUpsClient() {
 
       <Panel>
         <div className="grid gap-3 md:grid-cols-3">
-          <FilterSelect value={typeFilter} onChange={setTypeFilter} options={["all", ...followupTypeOptions]} />
-          <FilterSelect value={outcomeFilter} onChange={setOutcomeFilter} options={["all", ...followupOutcomeOptions]} />
-          <FilterSelect value={assignedFilter} onChange={setAssignedFilter} options={["all", ...assignedPeople]} />
+          <FilterField label="Type">
+            <FilterSelect value={typeFilter} onChange={setTypeFilter} options={["all", ...followupTypeOptions]} />
+          </FilterField>
+          <FilterField label="Outcome">
+            <FilterSelect value={outcomeFilter} onChange={setOutcomeFilter} options={["all", ...followupOutcomeOptions]} />
+          </FilterField>
+          <FilterField label="Assigned To">
+            <FilterSelect value={assignedFilter} onChange={setAssignedFilter} options={["all", ...assignedPeople]} />
+          </FilterField>
         </div>
       </Panel>
 
@@ -202,7 +209,7 @@ function TaskColumn({
                     {getDisplayName(lead)}
                   </Link>
                   <p className="mt-1 text-sm text-muted">
-                    {formatDate(lead.nextFollowupDate)} - {lead.assignedTo || "captain"}
+                    {formatDate(lead.nextFollowupDate)} - {lead.assignedTo || DEFAULT_ASSIGNEE}
                   </p>
                 </div>
                 <Badge>{lead.leadTemperature}</Badge>
@@ -219,6 +226,23 @@ function TaskColumn({
         <EmptyState title="Nothing here" description="No follow-up records match this section." />
       )}
     </Panel>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 

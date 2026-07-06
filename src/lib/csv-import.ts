@@ -3,6 +3,8 @@ import {
   getInitialLeadNextFollowupDate,
   getNextFollowupDateAfterContact,
 } from "./followup-schedule";
+import { DEFAULT_ASSIGNEE } from "./constants";
+import { inferIndustryFromLeadText, normalizeLeadSource } from "./lead-normalization";
 import type {
   FollowupOutcome,
   FollowupType,
@@ -73,9 +75,12 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
     contactPerson: leadName || "",
     phone: cleanPhone(rawPhone),
     email: "",
-    industry: "",
+    industry: inferIndustryFromLeadText([leadUrl, leadName, remarks]),
     location: "",
-    source: leadUrl ? "Instagram" : "CSV Import",
+    source: normalizeLeadSource("", leadUrl, {
+      preferUrlSource: true,
+      sourceFallback: "CSV Import",
+    }),
     leadTemperature,
     leadStage,
     serviceInterest: "30 Poster Package",
@@ -83,7 +88,7 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
     objectionReason: leadStage === "Rejected" ? "Other" : "",
     firstContactDate: contactDate,
     nextFollowupDate: getInitialLeadNextFollowupDate(contactDate, leadStage),
-    assignedTo: "captain",
+    assignedTo: DEFAULT_ASSIGNEE,
     remarks,
   };
 
