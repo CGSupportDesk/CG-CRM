@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, Edit3, Eye, FileUp, Plus, Search, Trash2 } from "lucide-react";
+import { Archive, CalendarPlus, Edit3, Eye, FileUp, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CsvImporter } from "@/components/csv-importer";
 import { useCRM } from "@/components/crm-provider";
 import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { leadStageOptions, leadTemperatureOptions, serviceInterestOptions } from "@/lib/constants";
-import type { Lead, LeadDraft } from "@/lib/types";
+import type { FollowupDraft, FollowupOutcome, Lead, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
-import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday, truncate } from "@/lib/utils";
+import { cn, formatCurrency, getDisplayName, isOverdue, isToday, offsetDate, todayIso } from "@/lib/utils";
 
 type SortMode = "created-desc" | "created-asc" | "followup-asc" | "temperature";
 type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
@@ -18,7 +18,7 @@ type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
 const temperatureWeight = { Hot: 0, Warm: 1, Cold: 2 };
 
 export function LeadsClient() {
-  const { leads, loading, addLead, updateLead, archiveLead, deleteLead } = useCRM();
+  const { leads, loading, saving, addLead, updateLead, archiveLead, deleteLead, addFollowup } = useCRM();
   const [query, setQuery] = useState("");
   const [temperature, setTemperature] = useState("all");
   const [stage, setStage] = useState("all");
@@ -87,20 +87,35 @@ export function LeadsClient() {
     temperature,
   ]);
 
-  function saveLead(draft: LeadDraft) {
+  async function saveLead(draft: LeadDraft) {
     if (editingLead) {
-      updateLead(editingLead.id, draft);
+      await updateLead(editingLead.id, draft);
       setEditingLead(null);
     } else {
-      addLead(draft);
+      await addLead(draft);
       setAddingLead(false);
     }
   }
 
   function removeLead(lead: Lead) {
     if (window.confirm(`Delete ${getDisplayName(lead)} permanently?`)) {
-      deleteLead(lead.id);
+      void deleteLead(lead.id);
     }
+  }
+
+  function quickLogFollowup(lead: Lead, outcome: FollowupOutcome) {
+    const followupType: FollowupDraft["followupType"] =
+      outcome === "Details Sent" ? "WhatsApp" : "Call";
+
+    void addFollowup({
+      leadId: lead.id,
+      followupDate: todayIso(),
+      followupType,
+      outcome,
+      nextFollowupDate: getQuickNextFollowupDate(lead, outcome),
+      remarks: `Quick update: ${outcome}`,
+      createdBy: "captain",
+    });
   }
 
   if (loading) {
@@ -160,6 +175,7 @@ export function LeadsClient() {
             <Badge tone="neutral">{filteredLeads.length} visible</Badge>
             <Badge tone="success">{activeLeads(leads).length} active</Badge>
             <Badge tone="soon">{leads.length - activeLeads(leads).length} archived</Badge>
+            {saving ? <Badge tone="info">Saving...</Badge> : null}
           </div>
           <label className="flex items-center gap-2 text-sm font-semibold text-muted">
             <input
@@ -174,7 +190,7 @@ export function LeadsClient() {
         {filteredLeads.length ? (
           <div className="overflow-hidden rounded-[20px] border border-border">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1060px] text-left text-sm">
+              <table className="w-full min-w-[1180px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
                     <th className="min-w-[360px] px-4 py-3">Lead</th>
@@ -182,7 +198,7 @@ export function LeadsClient() {
                     <th className="min-w-[130px] px-4 py-3">Temperature</th>
                     <th className="min-w-[190px] px-4 py-3">Stage</th>
                     <th className="min-w-[190px] px-4 py-3">Next Follow-up</th>
-                    <th className="min-w-[150px] px-4 py-3">Actions</th>
+                    <th className="min-w-[240px] px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -194,41 +210,77 @@ export function LeadsClient() {
                         </Link>
                         <p className="mt-1 text-xs text-muted">{lead.leadUrl || lead.industry || "No URL"}</p>
                         <p className="mt-1 text-xs font-semibold text-foreground">
-                          {lead.serviceInterest} · {formatCurrency(lead.expectedValue)}
+                          {lead.serviceInterest} - {formatCurrency(lead.expectedValue)}
                         </p>
-                        {lead.remarks ? (
-                          <p className="mt-1 max-w-[280px] text-xs leading-5 text-muted">
-                            {truncate(lead.remarks, 86)}
-                          </p>
-                        ) : null}
+                        <div className="mt-2 max-w-[320px]">
+                          <InlineTextField
+                            value={lead.remarks}
+                            placeholder="Add remark"
+                            title="Update remarks"
+                            onSave={(value) => updateLead(lead.id, { remarks: value })}
+                          />
+                        </div>
                       </td>
-                      <td className="px-4 py-4">{lead.phone || "Unavailable"}</td>
-                      <td className="px-4 py-4"><Badge>{lead.leadTemperature}</Badge></td>
-                      <td className="px-4 py-4"><Badge>{lead.leadStage}</Badge></td>
+                      <td className="px-4 py-4">
+                        <InlineTextField
+                          value={lead.phone}
+                          placeholder="Unavailable"
+                          title="Update phone"
+                          onSave={(value) => updateLead(lead.id, { phone: value })}
+                        />
+                      </td>
+                      <td className="px-4 py-4">
+                        <InlineSelect<LeadTemperature>
+                          value={lead.leadTemperature}
+                          options={leadTemperatureOptions}
+                          onChange={(value) => updateLead(lead.id, { leadTemperature: value })}
+                        />
+                      </td>
+                      <td className="px-4 py-4">
+                        <InlineSelect<LeadStage>
+                          value={lead.leadStage}
+                          options={leadStageOptions}
+                          onChange={(value) => updateLead(lead.id, { leadStage: value })}
+                        />
+                      </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-1">
-                          <span>{formatDate(lead.nextFollowupDate, "No date")}</span>
+                          <input
+                            type="date"
+                            className={`${inputClasses} min-h-9 rounded-xl text-xs`}
+                            value={lead.nextFollowupDate}
+                            title="Update next follow-up date"
+                            onChange={(event) => updateLead(lead.id, { nextFollowupDate: event.target.value })}
+                          />
                           {isOverdue(lead.nextFollowupDate) ? <Badge tone="danger">Overdue</Badge> : null}
                           {!lead.nextFollowupDate ? <Badge tone="muted">No follow-up date</Badge> : null}
                           {isToday(lead.nextFollowupDate) ? <Badge tone="success">Today</Badge> : null}
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="flex items-center gap-1">
-                          <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                          <Button variant="ghost" size="icon" title="Edit lead" onClick={() => setEditingLead(lead)}>
-                            <Edit3 className="h-4 w-4" />
-                          </Button>
-                          {!lead.isArchived ? (
-                            <Button variant="ghost" size="icon" title="Archive lead" onClick={() => archiveLead(lead.id)}>
-                              <Archive className="h-4 w-4" />
+                        <div className="flex min-w-[210px] flex-col gap-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            <QuickFollowupButton label="No response" outcome="No Response" onClick={() => quickLogFollowup(lead, "No Response")} />
+                            <QuickFollowupButton label="Sent" outcome="Details Sent" onClick={() => quickLogFollowup(lead, "Details Sent")} />
+                            <QuickFollowupButton label="Interested" outcome="Interested" onClick={() => quickLogFollowup(lead, "Interested")} />
+                            <QuickFollowupButton label="Reject" outcome="Rejected" onClick={() => quickLogFollowup(lead, "Rejected")} danger />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                            <Button variant="ghost" size="icon" title="Full edit" onClick={() => setEditingLead(lead)}>
+                              <Edit3 className="h-4 w-4" />
                             </Button>
-                          ) : null}
-                          <Button variant="danger" size="icon" title="Delete lead" onClick={() => removeLead(lead)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                            {!lead.isArchived ? (
+                              <Button variant="ghost" size="icon" title="Archive lead" onClick={() => void archiveLead(lead.id)}>
+                                <Archive className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                            <Button variant="danger" size="icon" title="Delete lead" onClick={() => removeLead(lead)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -246,7 +298,7 @@ export function LeadsClient() {
         )}
       </Panel>
 
-      {(addingLead || editingLead) ? (
+      {addingLead || editingLead ? (
         <Modal
           title={editingLead ? "Edit lead" : "Add new lead"}
           description="Capture the fields from the old tracker plus CRM-ready lead details."
@@ -268,6 +320,102 @@ export function LeadsClient() {
       ) : null}
     </div>
   );
+}
+
+function InlineTextField({
+  value,
+  placeholder,
+  title,
+  onSave,
+}: {
+  value: string;
+  placeholder: string;
+  title: string;
+  onSave: (value: string) => Promise<void> | void;
+}) {
+  const [localDraft, setLocalDraft] = useState(() => ({ source: value, value }));
+  const draft = localDraft.source === value ? localDraft.value : value;
+
+  async function commit() {
+    if (draft === value) return;
+    await onSave(draft);
+    setLocalDraft({ source: draft, value: draft });
+  }
+
+  return (
+    <input
+      className={`${inputClasses} min-h-9 rounded-xl px-2 text-xs`}
+      value={draft}
+      placeholder={placeholder}
+      title={title}
+      onChange={(event) => setLocalDraft({ source: value, value: event.target.value })}
+      onBlur={() => void commit()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          setLocalDraft({ source: value, value });
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function InlineSelect<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: T[];
+  onChange: (value: T) => Promise<void> | void;
+}) {
+  return (
+    <select
+      className={`${inputClasses} min-h-9 rounded-xl text-xs`}
+      value={value}
+      onChange={(event) => void onChange(event.target.value as T)}
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function QuickFollowupButton({
+  label,
+  outcome,
+  danger = false,
+  onClick,
+}: {
+  label: string;
+  outcome: FollowupOutcome;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant={danger ? "danger" : "secondary"}
+      size="sm"
+      className="min-h-8 px-2 text-[11px]"
+      title={`Log ${outcome}`}
+      onClick={onClick}
+    >
+      <CalendarPlus className="h-3.5 w-3.5" />
+      {label}
+    </Button>
+  );
+}
+
+function getQuickNextFollowupDate(lead: Lead, outcome: FollowupOutcome) {
+  if (outcome === "Rejected" || outcome === "Converted") return "";
+  if (outcome === "No Response") return offsetDate(1);
+  if (outcome === "Details Sent") return offsetDate(2);
+  return lead.nextFollowupDate || offsetDate(1);
 }
 
 function FilterSelect({

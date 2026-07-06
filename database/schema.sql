@@ -1,99 +1,50 @@
 -- Growth Engine Phase 1 schema
--- Use this as the source schema when moving from local demo persistence to Postgres.
+-- Neon/Postgres source schema for the CG Studio Lead Tracker.
 
 create table if not exists leads (
-  id uuid primary key default gen_random_uuid(),
-  lead_url text,
-  lead_name text not null,
-  business_name text,
-  contact_person text,
-  phone text,
-  email text,
-  industry text,
-  location text,
-  source text,
-  lead_temperature text not null check (lead_temperature in ('Hot', 'Warm', 'Cold')),
-  lead_stage text not null check (
-    lead_stage in (
-      'New Lead',
-      'Contacted',
-      'Details Sent',
-      'Follow-up Needed',
-      'Proposal Sent',
-      'Won',
-      'Lost',
-      'Rejected',
-      'No Response'
-    )
-  ),
-  service_interest text check (
-    service_interest in (
-      '30 Poster Package',
-      '15 Posters Monthly Package',
-      'Website',
-      'Posters + Website',
-      'Branding',
-      'One-time Creative',
-      'Maintenance',
-      'Not Sure'
-    )
-  ),
-  expected_value numeric(12, 2) default 0,
-  objection_reason text check (
-    objection_reason in (
-      'Price High',
-      'Already Has Team',
-      'Already Has Agency',
-      'Need Time',
-      'No Budget',
-      'No Response',
-      'Wants Videos',
-      'Not Decision Maker',
-      'Not Interested Now',
-      'Will Contact Later',
-      'Other'
-    )
-  ),
+  id text primary key,
+  lead_url text not null default '',
+  lead_name text not null default '',
+  business_name text not null default '',
+  contact_person text not null default '',
+  phone text not null default '',
+  email text not null default '',
+  industry text not null default '',
+  location text not null default '',
+  source text not null default '',
+  lead_temperature text not null default 'Cold',
+  lead_stage text not null default 'New Lead',
+  service_interest text not null default '30 Poster Package',
+  expected_value numeric(12, 2) not null default 0,
+  objection_reason text not null default '',
   first_contact_date date,
   next_followup_date date,
-  remarks text,
-  assigned_to text,
+  remarks text not null default '',
+  assigned_to text not null default 'captain',
   is_archived boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create table if not exists followups (
-  id uuid primary key default gen_random_uuid(),
-  lead_id uuid not null references leads(id) on delete cascade,
+  id text primary key,
+  lead_id text not null references leads(id) on delete cascade,
   followup_date date not null,
-  followup_type text not null check (followup_type in ('Call', 'WhatsApp', 'Instagram DM', 'Meeting')),
-  outcome text not null check (
-    outcome in (
-      'No Response',
-      'Call Back Later',
-      'Details Sent',
-      'Interested',
-      'Not Interested',
-      'Asked for Price',
-      'Proposal Requested',
-      'Converted',
-      'Rejected'
-    )
-  ),
+  followup_type text not null,
+  outcome text not null,
   next_followup_date date,
-  remarks text,
-  created_by text,
+  remarks text not null default '',
+  created_by text not null default 'captain',
   created_at timestamptz not null default now()
 );
 
 create table if not exists activity_logs (
-  id uuid primary key default gen_random_uuid(),
-  lead_id uuid not null references leads(id) on delete cascade,
+  id text primary key,
+  lead_id text not null references leads(id) on delete cascade,
   action text not null,
-  old_value text,
-  new_value text,
-  created_by text,
+  old_value text not null default '',
+  new_value text not null default '',
+  created_by text not null default 'captain',
   created_at timestamptz not null default now()
 );
 

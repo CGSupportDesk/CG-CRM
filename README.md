@@ -40,14 +40,19 @@ GROWTH_ENGINE_USERNAME=captain
 GROWTH_ENGINE_PASSWORD=<private-password>
 GROWTH_ENGINE_SESSION_TOKEN=<long-random-token>
 GROWTH_ENGINE_SEED_TSV_BASE64=<private-base64-encoded-tracker-tsv>
+DATABASE_URL=<vercel-neon-database-url>
+POSTGRES_URL=<vercel-neon-postgres-url>
 ```
 
 The password is checked only by the server route at `/api/auth/login`; it is not placed in frontend client code.
 The seed tracker is also server-side. Keep `GROWTH_ENGINE_SEED_TSV_BASE64` in Vercel/project env only because it contains campaign contact details.
+`DATABASE_URL` and `POSTGRES_URL` are created automatically when the Neon Marketplace integration is connected to the Vercel project.
 
 ## Data
 
-The current build uses browser local storage for Phase 1 campaign persistence so the CRM works immediately after deploy without provisioning a database. If `GROWTH_ENGINE_SEED_TSV_BASE64` is configured, authenticated users start with the active 30 Poster Package sales campaign tracker instead of dummy sample leads. The SQL schema for a future Postgres-backed version is in `database/schema.sql`.
+The current build uses Neon Postgres through Vercel Marketplace for Phase 1 campaign persistence. On the first authenticated CRM load, the app creates the `leads`, `followups`, and `activity_logs` tables if needed. If the database is empty and `GROWTH_ENGINE_SEED_TSV_BASE64` is configured, it seeds the active 30 Poster Package sales campaign tracker instead of dummy sample leads.
+
+The source schema is in `database/schema.sql`.
 
 Tables covered:
 

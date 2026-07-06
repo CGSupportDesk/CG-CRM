@@ -26,10 +26,15 @@ export function CsvImporter() {
     }
   }
 
-  function importRows() {
+  async function importRows() {
     if (!preview) return;
-    const result = importLegacyRows(preview.rows);
-    setSummary(result);
+    setLoading(true);
+    try {
+      const result = await importLegacyRows(preview.rows);
+      setSummary(result);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -78,9 +83,9 @@ export function CsvImporter() {
               </Badge>
               <Badge tone="neutral">{preview.totalRows} total rows</Badge>
             </div>
-            <Button onClick={importRows} disabled={!preview.rows.length}>
+            <Button onClick={importRows} disabled={!preview.rows.length || loading}>
               <FileUp className="h-4 w-4" />
-              Import Previewed Rows
+              {loading ? "Importing..." : "Import Previewed Rows"}
             </Button>
           </div>
 
