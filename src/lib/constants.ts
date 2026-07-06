@@ -22,7 +22,7 @@ export const leadStageOptions: LeadStage[] = [
 ];
 
 export const serviceInterestOptions: ServiceInterest[] = [
-  "30 Posters Monthly Package",
+  "30 Poster Package",
   "15 Posters Monthly Package",
   "Website",
   "Posters + Website",

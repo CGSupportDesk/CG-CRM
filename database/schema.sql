@@ -28,7 +28,7 @@ create table if not exists leads (
   ),
   service_interest text check (
     service_interest in (
-      '30 Posters Monthly Package',
+      '30 Poster Package',
       '15 Posters Monthly Package',
       'Website',
       'Posters + Website',

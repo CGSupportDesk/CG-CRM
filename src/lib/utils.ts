@@ -40,6 +40,33 @@ export function parsePossibleDate(value: string) {
   const raw = value.trim();
   if (!raw) return "";
 
+  const monthName = raw.match(
+    /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:,\s*(\d{4}))?/i,
+  );
+  if (monthName) {
+    const months = [
+      "january",
+      "february",
+      "march",
+      "april",
+      "may",
+      "june",
+      "july",
+      "august",
+      "september",
+      "october",
+      "november",
+      "december",
+    ];
+    const month = months.indexOf(monthName[1].toLowerCase()) + 1;
+    const day = Number(monthName[2]);
+    const year = Number(monthName[3] || new Date().getFullYear());
+
+    if (month > 0 && Number.isFinite(day) && Number.isFinite(year)) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
   const direct = new Date(raw);
   if (!Number.isNaN(direct.getTime())) {
     return toLocalIsoDate(direct);

@@ -22,7 +22,7 @@ import type {
 } from "@/lib/types";
 import { createId } from "@/lib/utils";
 
-const STORAGE_KEY = "growth-engine-crm-state-v1";
+const STORAGE_KEY = "growth-engine-crm-state-v4";
 
 interface CRMContextValue extends CRMState {
   loading: boolean;
@@ -47,22 +47,41 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let nextState: CRMState;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        nextState = JSON.parse(stored) as CRMState;
-      } catch {
-        nextState = createSeedData();
+    let cancelled = false;
+
+    async function loadInitialState() {
+      let nextState: CRMState = createSeedData();
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+
+      if (stored) {
+        try {
+          nextState = JSON.parse(stored) as CRMState;
+        } catch {
+          nextState = createSeedData();
+        }
+      } else {
+        try {
+          const response = await fetch("/api/seed", { cache: "no-store" });
+          if (response.ok) {
+            nextState = (await response.json()) as CRMState;
+          }
+        } catch {
+          nextState = createSeedData();
+        }
       }
-    } else {
-      nextState = createSeedData();
+
+      if (!cancelled) {
+        // Local storage must be read after hydration so the server and first client render match.
+        setState(nextState);
+        setLoading(false);
+      }
     }
 
-    // Local storage must be read after hydration so the server and first client render match.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(nextState);
-    setLoading(false);
+    void loadInitialState();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

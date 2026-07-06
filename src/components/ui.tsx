@@ -61,7 +61,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold leading-none",
+        "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold leading-none",
         resolvedTone === "neutral" && "border-border bg-white text-foreground",
         resolvedTone === "hot" && "border-[#ffc4bd] bg-[#fff0ed] text-[#c13a2e]",
         resolvedTone === "warm" && "border-[#ffe1a3] bg-[#fff7df] text-[#9b6a00]",

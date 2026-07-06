@@ -22,8 +22,8 @@ const defaultDraft: LeadDraft = {
   source: "Instagram",
   leadTemperature: "Warm",
   leadStage: "New Lead",
-  serviceInterest: "Not Sure",
-  expectedValue: 0,
+  serviceInterest: "30 Poster Package",
+  expectedValue: 5000,
   objectionReason: "",
   firstContactDate: "",
   nextFollowupDate: "",
@@ -191,7 +191,7 @@ export function LeadForm({
           value={String(draft.expectedValue)}
           onChange={(value) => setField("expectedValue", Number(value || 0))}
           error={errors.expectedValue}
-          placeholder="30000"
+          placeholder="5000"
         />
         <SelectField
           label="Objection Reason"

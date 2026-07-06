@@ -29,7 +29,7 @@ Default Phase 1 login:
 - Username: `captain`
 - Password: configure `GROWTH_ENGINE_PASSWORD`
 
-If environment variables are not set, the server-side auth route falls back to the Phase 1 password from the brief. For Vercel, set the variables below.
+For Vercel, set the variables below so the fixed Phase 1 login stays server-side.
 
 ## Vercel Environment Variables
 
@@ -37,15 +37,17 @@ Create these in Vercel Project Settings:
 
 ```bash
 GROWTH_ENGINE_USERNAME=captain
-GROWTH_ENGINE_PASSWORD=Kris235
+GROWTH_ENGINE_PASSWORD=<private-password>
 GROWTH_ENGINE_SESSION_TOKEN=<long-random-token>
+GROWTH_ENGINE_SEED_TSV_BASE64=<private-base64-encoded-tracker-tsv>
 ```
 
 The password is checked only by the server route at `/api/auth/login`; it is not placed in frontend client code.
+The seed tracker is also server-side. Keep `GROWTH_ENGINE_SEED_TSV_BASE64` in Vercel/project env only because it contains campaign contact details.
 
 ## Data
 
-The current build uses browser local storage for Phase 1 demo persistence so the CRM works immediately after deploy without provisioning a database. The SQL schema for a future Postgres-backed version is in `database/schema.sql`.
+The current build uses browser local storage for Phase 1 campaign persistence so the CRM works immediately after deploy without provisioning a database. If `GROWTH_ENGINE_SEED_TSV_BASE64` is configured, authenticated users start with the active 30 Poster Package sales campaign tracker instead of dummy sample leads. The SQL schema for a future Postgres-backed version is in `database/schema.sql`.
 
 Tables covered:
 

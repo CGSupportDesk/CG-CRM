@@ -10,7 +10,7 @@ import { Badge, Button, EmptyState, Modal, PageHeader, Panel, buttonClasses, inp
 import { leadStageOptions, leadTemperatureOptions, serviceInterestOptions } from "@/lib/constants";
 import type { Lead, LeadDraft } from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
-import { cn, formatDate, getDisplayName, isOverdue, isToday, truncate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday, truncate } from "@/lib/utils";
 
 type SortMode = "created-desc" | "created-asc" | "followup-asc" | "temperature";
 type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
@@ -174,16 +174,15 @@ export function LeadsClient() {
         {filteredLeads.length ? (
           <div className="overflow-hidden rounded-[20px] border border-border">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1040px] text-left text-sm">
+              <table className="w-full min-w-[1060px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
-                    <th className="px-4 py-3">Lead</th>
-                    <th className="px-4 py-3">Phone</th>
-                    <th className="px-4 py-3">Temperature</th>
-                    <th className="px-4 py-3">Stage</th>
-                    <th className="px-4 py-3">Service</th>
-                    <th className="px-4 py-3">Next Follow-up</th>
-                    <th className="sticky right-0 z-10 bg-surface-strong px-4 py-3">Actions</th>
+                    <th className="min-w-[360px] px-4 py-3">Lead</th>
+                    <th className="min-w-[150px] px-4 py-3">Phone</th>
+                    <th className="min-w-[130px] px-4 py-3">Temperature</th>
+                    <th className="min-w-[190px] px-4 py-3">Stage</th>
+                    <th className="min-w-[190px] px-4 py-3">Next Follow-up</th>
+                    <th className="min-w-[150px] px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -194,6 +193,9 @@ export function LeadsClient() {
                           {getDisplayName(lead)}
                         </Link>
                         <p className="mt-1 text-xs text-muted">{lead.leadUrl || lead.industry || "No URL"}</p>
+                        <p className="mt-1 text-xs font-semibold text-foreground">
+                          {lead.serviceInterest} · {formatCurrency(lead.expectedValue)}
+                        </p>
                         {lead.remarks ? (
                           <p className="mt-1 max-w-[280px] text-xs leading-5 text-muted">
                             {truncate(lead.remarks, 86)}
@@ -203,7 +205,6 @@ export function LeadsClient() {
                       <td className="px-4 py-4">{lead.phone || "Unavailable"}</td>
                       <td className="px-4 py-4"><Badge>{lead.leadTemperature}</Badge></td>
                       <td className="px-4 py-4"><Badge>{lead.leadStage}</Badge></td>
-                      <td className="px-4 py-4">{lead.serviceInterest}</td>
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-1">
                           <span>{formatDate(lead.nextFollowupDate, "No date")}</span>
@@ -212,7 +213,7 @@ export function LeadsClient() {
                           {isToday(lead.nextFollowupDate) ? <Badge tone="success">Today</Badge> : null}
                         </div>
                       </td>
-                      <td className="sticky right-0 bg-white px-4 py-4 shadow-[-14px_0_24px_rgba(255,255,255,0.9)]">
+                      <td className="px-4 py-4">
                         <div className="flex items-center gap-1">
                           <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
                             <Eye className="h-4 w-4" />
