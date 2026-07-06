@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #eef5f8;
+  --foreground: #101820;
+  --surface: #ffffff;
+  --surface-soft: #f7fbfd;
+  --surface-strong: #111a20;
+  --muted: #65747f;
+  --border: #d8e4e9;
+  --accent: #d9ff2f;
+  --accent-dark: #8bb800;
+  --success: #14a36d;
+  --warning: #e7a800;
+  --danger: #de4949;
+  --info: #3f77f5;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-soft: var(--surface-soft);
+  --color-surface-strong: var(--surface-strong);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(217, 255, 47, 0.75);
+  color: #101820;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
