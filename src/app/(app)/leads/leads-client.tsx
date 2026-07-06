@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, CalendarPlus, Edit3, Eye, FileUp, Plus, Search, Trash2 } from "lucide-react";
+import { Archive, Edit3, Eye, FileUp, Plus, Search, Trash2 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { CsvImporter } from "@/components/csv-importer";
 import { useCRM } from "@/components/crm-provider";
 import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { leadStageOptions, leadTemperatureOptions, serviceInterestOptions } from "@/lib/constants";
-import { getNextFollowupDateForNewFollowup } from "@/lib/followup-schedule";
-import type { FollowupDraft, FollowupOutcome, Lead, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
+import type { Lead, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
-import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday, todayIso } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 type SortMode = "created-desc" | "created-asc" | "followup-asc" | "temperature";
 type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
@@ -19,7 +18,7 @@ type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
 const temperatureWeight = { Hot: 0, Warm: 1, Cold: 2 };
 
 export function LeadsClient() {
-  const { leads, followups, loading, saving, addLead, updateLead, archiveLead, deleteLead, addFollowup } = useCRM();
+  const { leads, loading, saving, addLead, updateLead, archiveLead, deleteLead } = useCRM();
   const [query, setQuery] = useState("");
   const [temperature, setTemperature] = useState("all");
   const [stage, setStage] = useState("all");
@@ -102,28 +101,6 @@ export function LeadsClient() {
     if (window.confirm(`Delete ${getDisplayName(lead)} permanently?`)) {
       void deleteLead(lead.id);
     }
-  }
-
-  function quickLogFollowup(lead: Lead, outcome: FollowupOutcome) {
-    const followupType: FollowupDraft["followupType"] =
-      outcome === "Details Sent" ? "WhatsApp" : "Call";
-    const followupDate = todayIso();
-    const leadFollowups = followups.filter((followup) => followup.leadId === lead.id);
-
-    void addFollowup({
-      leadId: lead.id,
-      followupDate,
-      followupType,
-      outcome,
-      nextFollowupDate: getNextFollowupDateForNewFollowup(
-        lead,
-        leadFollowups,
-        followupDate,
-        outcome,
-      ),
-      remarks: `Quick update: ${outcome}`,
-      createdBy: "captain",
-    });
   }
 
   if (loading) {
@@ -214,12 +191,12 @@ export function LeadsClient() {
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
-                    <th className="w-[32%] px-4 py-3">Lead</th>
+                    <th className="w-[34%] px-4 py-3">Lead</th>
                     <th className="w-[14%] px-3 py-3">Phone</th>
                     <th className="w-[11%] px-3 py-3">Temp</th>
-                    <th className="w-[15%] px-3 py-3">Stage</th>
-                    <th className="w-[13%] px-3 py-3">Next</th>
-                    <th className="w-[15%] px-3 py-3">Actions</th>
+                    <th className="w-[16%] px-3 py-3">Stage</th>
+                    <th className="w-[15%] px-3 py-3">Next</th>
+                    <th className="w-[10%] px-3 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -278,29 +255,21 @@ export function LeadsClient() {
                         </div>
                       </td>
                       <td className="px-3 py-4">
-                        <div className="flex flex-col gap-2">
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <QuickFollowupButton label="No res." outcome="No Response" onClick={() => quickLogFollowup(lead, "No Response")} />
-                            <QuickFollowupButton label="Sent" outcome="Details Sent" onClick={() => quickLogFollowup(lead, "Details Sent")} />
-                            <QuickFollowupButton label="Int." outcome="Interested" onClick={() => quickLogFollowup(lead, "Interested")} />
-                            <QuickFollowupButton label="Reject" outcome="Rejected" onClick={() => quickLogFollowup(lead, "Rejected")} danger />
-                          </div>
-                          <div className="grid grid-cols-4 gap-1">
-                            <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                            <Button variant="ghost" size="icon" title="Full edit" onClick={() => setEditingLead(lead)}>
-                              <Edit3 className="h-4 w-4" />
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                          <Button variant="ghost" size="icon" title="Full edit" onClick={() => setEditingLead(lead)}>
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                          {!lead.isArchived ? (
+                            <Button variant="ghost" size="icon" title="Archive lead" onClick={() => void archiveLead(lead.id)}>
+                              <Archive className="h-4 w-4" />
                             </Button>
-                            {!lead.isArchived ? (
-                              <Button variant="ghost" size="icon" title="Archive lead" onClick={() => void archiveLead(lead.id)}>
-                                <Archive className="h-4 w-4" />
-                              </Button>
-                            ) : null}
-                            <Button variant="danger" size="icon" title="Delete lead" onClick={() => removeLead(lead)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          ) : null}
+                          <Button variant="danger" size="icon" title="Delete lead" onClick={() => removeLead(lead)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -401,32 +370,6 @@ function InlineSelect<T extends string>({
         </option>
       ))}
     </select>
-  );
-}
-
-function QuickFollowupButton({
-  label,
-  outcome,
-  danger = false,
-  onClick,
-}: {
-  label: string;
-  outcome: FollowupOutcome;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant={danger ? "danger" : "secondary"}
-      size="sm"
-      className="min-h-8 px-2 text-[11px]"
-      title={`Log ${outcome}`}
-      onClick={onClick}
-    >
-      <CalendarPlus className="hidden h-3.5 w-3.5 2xl:block" />
-      {label}
-    </Button>
   );
 }
 
