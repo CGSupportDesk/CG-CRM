@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, IndianRupee, Percent, Target, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { ReportInsightsPanel } from "@/components/ai-panels";
 import { BarList, DonutChart } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, EmptyState, PageHeader, Panel, buttonClasses } from "@/components/ui";
@@ -54,6 +55,8 @@ export function ReportsClient() {
         <ReportMetric icon={Percent} label="Conversion Rate" value={`${conversionRate}%`} />
         <ReportMetric icon={IndianRupee} label="Expected Revenue" value={formatCurrency(kpis.expectedRevenue)} />
       </div>
+
+      <ReportInsightsPanel />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel>

@@ -1,6 +1,7 @@
 import type { Followup, FollowupOutcome, Lead, LeadStage } from "./types";
 
 const FOLLOWUP_WORKING_DAY_GAPS = [1, 2, 2, 3] as const;
+const ONGOING_FOLLOWUP_WORKING_DAY_GAP = 3;
 const TERMINAL_LEAD_STAGES: LeadStage[] = ["Won", "Lost", "Rejected"];
 const TERMINAL_FOLLOWUP_OUTCOMES: FollowupOutcome[] = ["Converted", "Rejected"];
 
@@ -37,8 +38,9 @@ export function getNextFollowupDateAfterContact(
 ) {
   if (!contactDate || isTerminalOutcome(outcome)) return "";
 
-  const gap = FOLLOWUP_WORKING_DAY_GAPS[contactNumber - 1];
-  return gap ? addWorkingDays(contactDate, gap) : "";
+  const gap =
+    FOLLOWUP_WORKING_DAY_GAPS[contactNumber - 1] || ONGOING_FOLLOWUP_WORKING_DAY_GAP;
+  return addWorkingDays(contactDate, gap);
 }
 
 export function getInitialLeadNextFollowupDate(

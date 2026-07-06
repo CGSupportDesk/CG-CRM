@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, CalendarClock, Flame, IndianRupee, Target, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { DailyBriefPanel } from "@/components/ai-panels";
 import { BarList, DonutChart, Sparkline } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, EmptyState, PageHeader, Panel, buttonClasses } from "@/components/ui";
@@ -68,6 +69,8 @@ export function DashboardClient() {
         <MiniStat label="Rejected Leads" value={kpis.rejectedLeads} />
         <MiniStat label="Won / Lost Leads" value={`${kpis.wonLeads} / ${kpis.lostLeads}`} />
       </div>
+
+      <DailyBriefPanel />
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <Panel dark className="space-y-5">

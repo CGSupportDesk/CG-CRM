@@ -127,3 +127,67 @@ export interface ImportSummary {
   followupsImported: number;
   skippedRows: number;
 }
+
+export type WhatsappTemplateKey =
+  | "Send Details"
+  | "Will Think About It"
+  | "Did Not Answer"
+  | "Seen But No Reply"
+  | "Sample Offer"
+  | "Price Objection"
+  | "None";
+
+export interface SmartLeadSuggestion {
+  summary: string;
+  confidence: number;
+  suggestedLead: Partial<LeadDraft>;
+  reasons: string[];
+  warnings: string[];
+  recommendedWhatsappTemplate: WhatsappTemplateKey;
+}
+
+export interface ImportCleanupRowSuggestion {
+  rowNumber: number;
+  confidence: number;
+  suggestedLead: Partial<LeadDraft>;
+  warnings: string[];
+  notes: string;
+}
+
+export interface ImportCleanupResult {
+  overview: string;
+  rows: ImportCleanupRowSuggestion[];
+}
+
+export interface DailyBriefPriority {
+  leadId: string;
+  leadName: string;
+  reason: string;
+  action: string;
+  recommendedWhatsappTemplate: WhatsappTemplateKey;
+}
+
+export interface DailyBrief {
+  generatedAt: string;
+  headline: string;
+  focus: string;
+  priorities: DailyBriefPriority[];
+  todayPlan: string[];
+  risks: string[];
+  quickWins: string[];
+}
+
+export interface ReportAiInsight {
+  title: string;
+  detail: string;
+  action: string;
+}
+
+export interface ReportInsights {
+  generatedAt: string;
+  executiveSummary: string;
+  insights: ReportAiInsight[];
+  risks: ReportAiInsight[];
+  opportunities: ReportAiInsight[];
+  nextActions: string[];
+}

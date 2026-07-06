@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { Button, FieldLabel, inputClasses } from "@/components/ui";
 import {
   DEFAULT_ASSIGNEE,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/constants";
 import { getInitialLeadNextFollowupDate } from "@/lib/followup-schedule";
 import { inferLeadSourceFromUrl } from "@/lib/lead-normalization";
-import type { Lead, LeadDraft } from "@/lib/types";
+import type { Lead, LeadDraft, SmartLeadSuggestion } from "@/lib/types";
 
 const defaultDraft: LeadDraft = {
   leadUrl: "",
@@ -73,6 +74,9 @@ export function LeadForm({
   );
   const [draft, setDraft] = useState<LeadDraft>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState<SmartLeadSuggestion | null>(null);
   const sourceOptions = useMemo(
     () => Array.from(new Set([...leadSourceOptions, draft.source].filter(Boolean))),
     [draft.source],
@@ -95,6 +99,44 @@ export function LeadForm({
       ...current,
       leadUrl: value,
       source: inferLeadSourceFromUrl(value) || current.source,
+    }));
+  }
+
+  async function suggestWithAi() {
+    setAiLoading(true);
+    setAiError("");
+    setAiSuggestion(null);
+
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "smartLeadDraft", draft }),
+      });
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(error?.error || `AI request failed with ${response.status}`);
+      }
+
+      setAiSuggestion((await response.json()) as SmartLeadSuggestion);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Could not generate AI suggestions.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function applyAiSuggestion() {
+    if (!aiSuggestion) return;
+
+    setDraft((current) => ({
+      ...current,
+      ...removeEmptySuggestion(aiSuggestion.suggestedLead),
+      leadUrl: current.leadUrl,
+      firstContactDate: current.firstContactDate,
+      nextFollowupDate: current.nextFollowupDate,
+      assignedTo: current.assignedTo,
     }));
   }
 
@@ -128,6 +170,60 @@ export function LeadForm({
         submit();
       }}
     >
+      <div className="rounded-[20px] border border-border bg-surface-soft p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold">Smart Data Entry</p>
+              <span className="rounded-full border border-[#cddcff] bg-[#eef4ff] px-2.5 py-1 text-[11px] font-bold text-[#2f5edb]">
+                Groq
+              </span>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Paste the URL, name, phone, and remarks first. AI can suggest industry, source, stage, temperature, objection, and package fields.
+            </p>
+          </div>
+          <Button type="button" variant="secondary" onClick={suggestWithAi} disabled={aiLoading}>
+            <Sparkles className="h-4 w-4" />
+            {aiLoading ? "Suggesting..." : "Suggest Fields"}
+          </Button>
+        </div>
+
+        {aiError ? (
+          <p className="mt-3 rounded-2xl border border-[#f7c7c7] bg-[#fff0f0] p-3 text-sm font-semibold text-[#bd2727]">
+            {aiError}
+          </p>
+        ) : null}
+
+        {aiSuggestion ? (
+          <div className="mt-4 rounded-2xl border border-border bg-white p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">{aiSuggestion.summary}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.08em] text-muted">
+                  Confidence {aiSuggestion.confidence}% - Template: {aiSuggestion.recommendedWhatsappTemplate}
+                </p>
+              </div>
+              <Button type="button" size="sm" onClick={applyAiSuggestion}>
+                Apply Suggestions
+              </Button>
+            </div>
+            {aiSuggestion.reasons.length ? (
+              <ul className="mt-3 grid gap-1 text-sm leading-6 text-muted">
+                {aiSuggestion.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            ) : null}
+            {aiSuggestion.warnings.length ? (
+              <div className="mt-3 rounded-2xl border border-[#ffe1a3] bg-[#fff7df] p-3 text-xs font-semibold leading-5 text-[#9b6a00]">
+                {aiSuggestion.warnings.join(" ")}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <TextField
           label="Lead URL"
@@ -313,4 +409,13 @@ function SelectField({
       </select>
     </FieldLabel>
   );
+}
+
+function removeEmptySuggestion(suggestion: Partial<LeadDraft>) {
+  return Object.fromEntries(
+    Object.entries(suggestion).filter(([, value]) => {
+      if (typeof value === "string") return value.trim().length > 0;
+      return value !== undefined && value !== null;
+    }),
+  ) as Partial<LeadDraft>;
 }
