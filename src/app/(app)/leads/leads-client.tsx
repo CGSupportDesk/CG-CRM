@@ -243,8 +243,8 @@ export function LeadsClient() {
                     <th className="w-[11%] px-3 py-3">Phone</th>
                     <th className="w-[9%] px-3 py-3">Temp</th>
                     <th className="w-[13%] px-3 py-3">Stage</th>
-                    <th className="w-[26%] px-3 py-3">Contact Plan</th>
-                    <th className="w-[13%] px-3 py-3">Actions</th>
+                    <th className="w-[28%] px-3 py-3">Contact Plan</th>
+                    <th className="w-[11%] px-3 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -299,23 +299,26 @@ export function LeadsClient() {
                         />
                       </td>
                       <td className="px-3 py-4">
-                        <div className="grid grid-cols-3 gap-1.5">
+                        <div className="grid grid-cols-3 justify-items-center gap-1.5">
                           <Button variant="secondary" size="icon" title="Send WhatsApp" onClick={() => setWhatsappLead(lead)}>
                             <MessageCircle className="h-4 w-4" />
                           </Button>
                           <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
                             <Eye className="h-4 w-4" />
                           </Link>
-                          <Button variant="ghost" size="icon" title="Full edit" onClick={() => setEditingLead(lead)}>
-                            <Edit3 className="h-4 w-4" />
-                          </Button>
+                          <span aria-hidden="true" className="h-9 w-9" />
                           {!lead.isArchived ? (
                             <Button variant="ghost" size="icon" title="Archive lead" onClick={() => void archiveLead(lead.id)}>
                               <Archive className="h-4 w-4" />
                             </Button>
-                          ) : null}
+                          ) : (
+                            <span aria-hidden="true" className="h-9 w-9" />
+                          )}
                           <Button variant="danger" size="icon" title="Delete lead" onClick={() => removeLead(lead)}>
                             <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Full edit" onClick={() => setEditingLead(lead)}>
+                            <Edit3 className="h-4 w-4" />
                           </Button>
                         </div>
                       </td>
