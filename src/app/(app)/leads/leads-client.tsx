@@ -6,20 +6,51 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CsvImporter } from "@/components/csv-importer";
 import { useCRM } from "@/components/crm-provider";
 import { LeadForm } from "@/components/lead-form";
-import { Badge, Button, EmptyState, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
+import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
-import { leadStageOptions, leadTemperatureOptions, serviceInterestOptions } from "@/lib/constants";
-import type { Lead, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
+import {
+  followupOutcomeOptions,
+  followupTypeOptions,
+  leadStageOptions,
+  leadTemperatureOptions,
+  serviceInterestOptions,
+} from "@/lib/constants";
+import { buildLeadContactTimeline, sortFollowups, type LeadContactTimelineItem } from "@/lib/followup-schedule";
+import type {
+  Followup,
+  FollowupDraft,
+  FollowupOutcome,
+  FollowupType,
+  Lead,
+  LeadDraft,
+  LeadStage,
+  LeadTemperature,
+} from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
 import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 type SortMode = "created-desc" | "created-asc" | "followup-asc" | "temperature";
 type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
+type ScheduledFollowupMark = {
+  lead: Lead;
+  item: Extract<LeadContactTimelineItem, { kind: "followup" }>;
+};
 
 const temperatureWeight = { Hot: 0, Warm: 1, Cold: 2 };
 
 export function LeadsClient() {
-  const { leads, loading, saving, addLead, updateLead, archiveLead, deleteLead, logLeadActivity } = useCRM();
+  const {
+    leads,
+    followups,
+    loading,
+    saving,
+    addLead,
+    updateLead,
+    archiveLead,
+    deleteLead,
+    addFollowup,
+    logLeadActivity,
+  } = useCRM();
   const [query, setQuery] = useState("");
   const [temperature, setTemperature] = useState("all");
   const [stage, setStage] = useState("all");
@@ -32,6 +63,7 @@ export function LeadsClient() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [addingLead, setAddingLead] = useState(false);
   const [whatsappLead, setWhatsappLead] = useState<Lead | null>(null);
+  const [markingFollowup, setMarkingFollowup] = useState<ScheduledFollowupMark | null>(null);
 
   const industries = useMemo(
     () =>
@@ -40,6 +72,15 @@ export function LeadsClient() {
       ),
     [leads],
   );
+  const followupsByLeadId = useMemo(() => {
+    const nextMap = new Map<string, Followup[]>();
+    followups.forEach((followup) => {
+      const leadFollowups = nextMap.get(followup.leadId) || [];
+      leadFollowups.push(followup);
+      nextMap.set(followup.leadId, leadFollowups);
+    });
+    return nextMap;
+  }, [followups]);
 
   const filteredLeads = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -99,6 +140,11 @@ export function LeadsClient() {
     }
   }
 
+  async function saveScheduledFollowup(draft: FollowupDraft) {
+    await addFollowup(draft);
+    setMarkingFollowup(null);
+  }
+
   function removeLead(lead: Lead) {
     if (window.confirm(`Delete ${getDisplayName(lead)} permanently?`)) {
       void deleteLead(lead.id);
@@ -131,7 +177,7 @@ export function LeadsClient() {
       {showImport ? <CsvImporter /> : null}
 
       <Panel className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.25fr)_repeat(6,minmax(112px,1fr))]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[minmax(220px,1.25fr)_repeat(6,minmax(112px,1fr))]">
           <FilterField label="Search">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
@@ -193,12 +239,12 @@ export function LeadsClient() {
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
-                    <th className="w-[31%] px-4 py-3">Lead</th>
-                    <th className="w-[13%] px-3 py-3">Phone</th>
-                    <th className="w-[10%] px-3 py-3">Temp</th>
-                    <th className="w-[15%] px-3 py-3">Stage</th>
-                    <th className="w-[16%] px-3 py-3">Next</th>
-                    <th className="w-[15%] px-3 py-3">Actions</th>
+                    <th className="w-[27%] px-4 py-3">Lead</th>
+                    <th className="w-[11%] px-3 py-3">Phone</th>
+                    <th className="w-[9%] px-3 py-3">Temp</th>
+                    <th className="w-[13%] px-3 py-3">Stage</th>
+                    <th className="w-[27%] px-3 py-3">Contact Plan</th>
+                    <th className="w-[13%] px-3 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -246,19 +292,11 @@ export function LeadsClient() {
                         />
                       </td>
                       <td className="px-3 py-4">
-                        <div className="flex flex-col gap-1">
-                          <div className={`${inputClasses} flex min-h-9 items-center rounded-xl bg-surface-soft px-2 text-xs text-muted`}>
-                            {getNextFollowupLabel(lead)}
-                          </div>
-                          {lead.nextFollowupDate ? <Badge tone="info">Auto</Badge> : null}
-                          {!lead.nextFollowupDate ? (
-                            <Badge tone={getMissingNextFollowupTone(lead)}>
-                              {getMissingNextFollowupReason(lead)}
-                            </Badge>
-                          ) : null}
-                          {isOverdue(lead.nextFollowupDate) ? <Badge tone="danger">Overdue</Badge> : null}
-                          {isToday(lead.nextFollowupDate) ? <Badge tone="success">Today</Badge> : null}
-                        </div>
+                        <LeadContactChecklist
+                          lead={lead}
+                          followups={followupsByLeadId.get(lead.id) || []}
+                          onMark={(item) => setMarkingFollowup({ lead, item })}
+                        />
                       </td>
                       <td className="px-3 py-4">
                         <div className="grid grid-cols-3 gap-1.5">
@@ -325,7 +363,203 @@ export function LeadsClient() {
           />
         </Modal>
       ) : null}
+
+      {markingFollowup ? (
+        <Modal
+          title={`Mark ${markingFollowup.item.label}`}
+          description={`${getDisplayName(markingFollowup.lead)} - ${formatDate(markingFollowup.item.date)}`}
+          onClose={() => setMarkingFollowup(null)}
+        >
+          <ScheduledFollowupModal
+            mark={markingFollowup}
+            saving={saving}
+            onSubmit={saveScheduledFollowup}
+            onCancel={() => setMarkingFollowup(null)}
+          />
+        </Modal>
+      ) : null}
     </div>
+  );
+}
+
+function LeadContactChecklist({
+  lead,
+  followups,
+  onMark,
+}: {
+  lead: Lead;
+  followups: Followup[];
+  onMark: (item: Extract<LeadContactTimelineItem, { kind: "followup" }>) => void;
+}) {
+  const completedByDate = new Map(
+    sortFollowups(followups)
+      .filter((followup) => followup.followupDate)
+      .map((followup) => [followup.followupDate, followup]),
+  );
+  const timeline = buildLeadContactTimeline(lead.firstContactDate);
+
+  return (
+    <div className="space-y-1.5">
+      {timeline.map((item) => {
+        if (item.kind === "contact") {
+          return (
+            <div
+              key="contacted"
+              className={cn(
+                "flex min-w-0 items-start gap-2 rounded-xl border px-2 py-1.5 text-xs",
+                item.date
+                  ? "border-[#b8ead6] bg-[#f4fcf8]"
+                  : "border-[#d8e0e4] bg-surface-soft",
+              )}
+            >
+              <input className="mt-0.5 h-4 w-4 shrink-0" type="checkbox" checked={Boolean(item.date)} disabled readOnly />
+              <div className="min-w-0">
+                <p className="font-bold text-foreground">Contacted</p>
+                <p className="text-[11px] text-muted">{formatDate(item.date, "No contact date")}</p>
+              </div>
+            </div>
+          );
+        }
+
+        const completed = item.date ? completedByDate.get(item.date) : undefined;
+        const checked = Boolean(completed);
+        const disabled = !item.date || checked || lead.isArchived || isClosedLead(lead);
+
+        return (
+          <label
+            key={item.label}
+            className={cn(
+              "flex min-w-0 items-start gap-2 rounded-xl border px-2 py-1.5 text-xs transition",
+              checked && "border-[#b8ead6] bg-[#f4fcf8]",
+              !checked && item.date && "border-border bg-white hover:border-[#c2d1d8] hover:bg-surface-soft",
+              !item.date && "border-[#d8e0e4] bg-surface-soft opacity-75",
+              disabled && !checked && "cursor-not-allowed",
+            )}
+          >
+            <input
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#a8e600]"
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => onMark(item)}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="flex min-w-0 items-center justify-between gap-2">
+                <span className="font-bold text-foreground">{item.label}</span>
+                {getTimelineBadge(item.date, checked)}
+              </span>
+              <span className="block text-[11px] text-muted">
+                {formatDate(item.date, "No date")}
+              </span>
+              {checked ? (
+                <span className="block truncate text-[11px] font-semibold text-[#0c7c52]" title={completed?.remarks || completed?.outcome}>
+                  Marked{completed?.remarks ? `: ${completed.remarks}` : ""}
+                </span>
+              ) : null}
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function ScheduledFollowupModal({
+  mark,
+  saving,
+  onSubmit,
+  onCancel,
+}: {
+  mark: ScheduledFollowupMark;
+  saving: boolean;
+  onSubmit: (draft: FollowupDraft) => Promise<void> | void;
+  onCancel: () => void;
+}) {
+  const [followupType, setFollowupType] = useState<FollowupType>("Call");
+  const [outcome, setOutcome] = useState<FollowupOutcome>("Call Back Later");
+  const [remarks, setRemarks] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit() {
+    const trimmedRemarks = remarks.trim();
+    if (!trimmedRemarks) {
+      setError("Add a short comment before marking this follow-up.");
+      return;
+    }
+
+    await onSubmit({
+      leadId: mark.lead.id,
+      followupDate: mark.item.date,
+      followupType,
+      outcome,
+      nextFollowupDate: "",
+      remarks: trimmedRemarks,
+      createdBy: "captain",
+    });
+  }
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        <FieldLabel label="Scheduled Date">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDate(mark.item.date)}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Follow-up Type">
+          <select
+            className={inputClasses}
+            value={followupType}
+            onChange={(event) => setFollowupType(event.target.value as FollowupType)}
+          >
+            {followupTypeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Outcome">
+          <select
+            className={inputClasses}
+            value={outcome}
+            onChange={(event) => setOutcome(event.target.value as FollowupOutcome)}
+          >
+            {followupOutcomeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+      </div>
+      <FieldLabel label="Comments" error={error}>
+        <textarea
+          className={`${inputClasses} min-h-28 py-3`}
+          value={remarks}
+          onChange={(event) => {
+            setRemarks(event.target.value);
+            setError("");
+          }}
+          placeholder="Example: Called, no answer. Sent WhatsApp details."
+          autoFocus
+        />
+      </FieldLabel>
+      <div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving..." : "Mark Follow-up"}
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -439,23 +673,12 @@ function formatOption(option: string) {
   return option;
 }
 
-function getNextFollowupLabel(lead: Lead) {
-  if (lead.nextFollowupDate) return formatDate(lead.nextFollowupDate);
-  if (isClosedLead(lead)) return lead.leadStage;
-  if (!lead.firstContactDate) return "First contact needed";
-  return "Review schedule";
-}
-
-function getMissingNextFollowupReason(lead: Lead) {
-  if (isClosedLead(lead)) return "Closed lead";
-  if (!lead.firstContactDate) return "No contact date";
-  return "Needs follow-up date";
-}
-
-function getMissingNextFollowupTone(lead: Lead): "muted" | "danger" | "soon" {
-  if (isClosedLead(lead)) return "muted";
-  if (!lead.firstContactDate) return "soon";
-  return "danger";
+function getTimelineBadge(date: string, marked: boolean) {
+  if (marked) return <Badge className="shrink-0" tone="success">Marked</Badge>;
+  if (!date) return <Badge className="shrink-0" tone="soon">No date</Badge>;
+  if (isToday(date)) return <Badge className="shrink-0" tone="success">Today</Badge>;
+  if (isOverdue(date)) return <Badge className="shrink-0" tone="danger">Overdue</Badge>;
+  return <Badge className="shrink-0" tone="info">Due</Badge>;
 }
 
 function isClosedLead(lead: Lead) {

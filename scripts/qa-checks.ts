@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   addWorkingDays,
   buildFollowupSchedule,
+  buildLeadContactTimeline,
   getInitialLeadNextFollowupDate,
   getNextFollowupDateForLead,
   getNextFollowupDateForNewFollowup,
@@ -31,6 +32,28 @@ assert.deepEqual(buildFollowupSchedule("2026-07-10"), [
   "2026-07-17",
   "2026-07-22",
 ]);
+assert.deepEqual(
+  buildLeadContactTimeline("2026-07-06").map((item) => `${item.label}:${item.date}`),
+  [
+    "Contacted:2026-07-06",
+    "F1:2026-07-07",
+    "F2:2026-07-09",
+    "F3:2026-07-13",
+    "F4:2026-07-16",
+    "F5:2026-07-21",
+  ],
+);
+assert.deepEqual(
+  buildLeadContactTimeline("2026-07-10").map((item) => `${item.label}:${item.date}`),
+  [
+    "Contacted:2026-07-10",
+    "F1:2026-07-13",
+    "F2:2026-07-15",
+    "F3:2026-07-17",
+    "F4:2026-07-22",
+    "F5:2026-07-27",
+  ],
+);
 assert.equal(addWorkingDays("2026-07-11", 1), "2026-07-13");
 assert.equal(getInitialLeadNextFollowupDate("2026-07-10", "Follow-up Needed"), "2026-07-13");
 assert.equal(getInitialLeadNextFollowupDate("2026-07-10", "Won"), "");

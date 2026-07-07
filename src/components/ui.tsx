@@ -161,6 +161,9 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#101820]/55 px-4 py-8 backdrop-blur-sm">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
           "w-full rounded-[24px] border border-border bg-white p-5 shadow-[0_28px_90px_rgba(0,0,0,0.25)]",
           wide ? "max-w-5xl" : "max-w-2xl",

@@ -9,6 +9,21 @@ type ScheduleFollowup = Pick<Followup, "followupDate" | "outcome" | "createdAt">
   id?: string;
 };
 
+export type LeadContactTimelineItem =
+  | {
+      kind: "contact";
+      label: "Contacted";
+      date: string;
+      contactNumber: 1;
+    }
+  | {
+      kind: "followup";
+      label: string;
+      date: string;
+      followupNumber: number;
+      contactNumber: number;
+    };
+
 export function addWorkingDays(startIso: string, workingDays: number) {
   const date = parseIsoDate(startIso);
   if (!date || workingDays <= 0) return "";
@@ -29,6 +44,37 @@ export function buildFollowupSchedule(firstContactDate: string) {
   const fifthContact = getNextFollowupDateAfterContact(fourthContact, 4);
 
   return [secondContact, thirdContact, fourthContact, fifthContact];
+}
+
+export function buildLeadContactTimeline(
+  firstContactDate: string,
+  followupCount = 5,
+): LeadContactTimelineItem[] {
+  const timeline: LeadContactTimelineItem[] = [
+    {
+      kind: "contact",
+      label: "Contacted",
+      date: firstContactDate,
+      contactNumber: 1,
+    },
+  ];
+
+  let previousDate = firstContactDate;
+  for (let index = 1; index <= followupCount; index += 1) {
+    const nextDate = previousDate
+      ? getNextFollowupDateAfterContact(previousDate, index)
+      : "";
+    timeline.push({
+      kind: "followup",
+      label: `F${index}`,
+      date: nextDate,
+      followupNumber: index,
+      contactNumber: index + 1,
+    });
+    previousDate = nextDate;
+  }
+
+  return timeline;
 }
 
 export function getNextFollowupDateAfterContact(
