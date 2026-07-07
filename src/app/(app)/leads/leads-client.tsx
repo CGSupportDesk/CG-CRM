@@ -239,11 +239,11 @@ export function LeadsClient() {
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
-                    <th className="w-[27%] px-4 py-3">Lead</th>
+                    <th className="w-[28%] px-4 py-3">Lead</th>
                     <th className="w-[11%] px-3 py-3">Phone</th>
                     <th className="w-[9%] px-3 py-3">Temp</th>
                     <th className="w-[13%] px-3 py-3">Stage</th>
-                    <th className="w-[27%] px-3 py-3">Contact Plan</th>
+                    <th className="w-[26%] px-3 py-3">Contact Plan</th>
                     <th className="w-[13%] px-3 py-3">Actions</th>
                   </tr>
                 </thead>
@@ -397,69 +397,78 @@ function LeadContactChecklist({
       .map((followup) => [followup.followupDate, followup]),
   );
   const timeline = buildLeadContactTimeline(lead.firstContactDate);
+  const contactItem = timeline.find((item) => item.kind === "contact");
+  const followupItems = timeline.filter(
+    (item): item is Extract<LeadContactTimelineItem, { kind: "followup" }> =>
+      item.kind === "followup",
+  );
 
   return (
-    <div className="space-y-1.5">
-      {timeline.map((item) => {
-        if (item.kind === "contact") {
+    <div className="min-w-0 space-y-1.5">
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
+          contactItem?.date
+            ? "border-[#b8ead6] bg-[#f4fcf8] text-[#0c7c52]"
+            : "border-[#d8e0e4] bg-surface-soft text-muted",
+        )}
+        title={formatDate(contactItem?.date || "", "No contact date")}
+      >
+        <input
+          className="h-3.5 w-3.5 shrink-0"
+          type="checkbox"
+          checked={Boolean(contactItem?.date)}
+          disabled
+          readOnly
+        />
+        <span className="shrink-0 font-bold">Contacted</span>
+        <span className="min-w-0 truncate font-semibold">
+          {formatCompactDate(contactItem?.date || "", "No date")}
+        </span>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-5 gap-1">
+        {followupItems.map((item) => {
+          const completed = item.date ? completedByDate.get(item.date) : undefined;
+          const checked = Boolean(completed);
+          const disabled = !item.date || checked || lead.isArchived || isClosedLead(lead);
+          const title = [
+            `${item.label}: ${formatDate(item.date, "No date")}`,
+            checked
+              ? `Marked: ${completed?.remarks || completed?.outcome || "Done"}`
+              : getTimelineStatusText(item.date),
+          ]
+            .filter(Boolean)
+            .join(" - ");
+
           return (
-            <div
-              key="contacted"
+            <label
+              key={item.label}
               className={cn(
-                "flex min-w-0 items-start gap-2 rounded-xl border px-2 py-1.5 text-xs",
-                item.date
-                  ? "border-[#b8ead6] bg-[#f4fcf8]"
-                  : "border-[#d8e0e4] bg-surface-soft",
+                "grid min-w-0 cursor-pointer justify-items-start gap-0.5 rounded-lg border px-1.5 py-1 text-[10px] leading-none transition",
+                checked && "border-[#b8ead6] bg-[#f4fcf8] text-[#0c7c52]",
+                !checked && item.date && getTimelineChipClass(item.date),
+                !item.date && "border-[#d8e0e4] bg-surface-soft text-muted opacity-75",
+                disabled && !checked && "cursor-not-allowed",
               )}
+              title={title}
             >
-              <input className="mt-0.5 h-4 w-4 shrink-0" type="checkbox" checked={Boolean(item.date)} disabled readOnly />
-              <div className="min-w-0">
-                <p className="font-bold text-foreground">Contacted</p>
-                <p className="text-[11px] text-muted">{formatDate(item.date, "No contact date")}</p>
-              </div>
-            </div>
+              <input
+                className="h-3.5 w-3.5 accent-[#a8e600]"
+                aria-label={`Mark ${item.label} for ${getDisplayName(lead)}`}
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                onChange={() => onMark(item)}
+              />
+              <span className="font-bold">{item.label}</span>
+              <span className="max-w-full truncate text-[9px] font-semibold opacity-80">
+                {formatCompactDate(item.date, "No date")}
+              </span>
+            </label>
           );
-        }
-
-        const completed = item.date ? completedByDate.get(item.date) : undefined;
-        const checked = Boolean(completed);
-        const disabled = !item.date || checked || lead.isArchived || isClosedLead(lead);
-
-        return (
-          <label
-            key={item.label}
-            className={cn(
-              "flex min-w-0 items-start gap-2 rounded-xl border px-2 py-1.5 text-xs transition",
-              checked && "border-[#b8ead6] bg-[#f4fcf8]",
-              !checked && item.date && "border-border bg-white hover:border-[#c2d1d8] hover:bg-surface-soft",
-              !item.date && "border-[#d8e0e4] bg-surface-soft opacity-75",
-              disabled && !checked && "cursor-not-allowed",
-            )}
-          >
-            <input
-              className="mt-0.5 h-4 w-4 shrink-0 accent-[#a8e600]"
-              type="checkbox"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => onMark(item)}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="flex min-w-0 items-center justify-between gap-2">
-                <span className="font-bold text-foreground">{item.label}</span>
-                {getTimelineBadge(item.date, checked)}
-              </span>
-              <span className="block text-[11px] text-muted">
-                {formatDate(item.date, "No date")}
-              </span>
-              {checked ? (
-                <span className="block truncate text-[11px] font-semibold text-[#0c7c52]" title={completed?.remarks || completed?.outcome}>
-                  Marked{completed?.remarks ? `: ${completed.remarks}` : ""}
-                </span>
-              ) : null}
-            </span>
-          </label>
-        );
-      })}
+        })}
+      </div>
     </div>
   );
 }
@@ -673,12 +682,23 @@ function formatOption(option: string) {
   return option;
 }
 
-function getTimelineBadge(date: string, marked: boolean) {
-  if (marked) return <Badge className="shrink-0" tone="success">Marked</Badge>;
-  if (!date) return <Badge className="shrink-0" tone="soon">No date</Badge>;
-  if (isToday(date)) return <Badge className="shrink-0" tone="success">Today</Badge>;
-  if (isOverdue(date)) return <Badge className="shrink-0" tone="danger">Overdue</Badge>;
-  return <Badge className="shrink-0" tone="info">Due</Badge>;
+function getTimelineChipClass(date: string) {
+  if (isToday(date)) return "border-[#b8ead6] bg-[#f4fcf8] text-[#0c7c52] hover:bg-[#eafaf3]";
+  if (isOverdue(date)) return "border-[#f7c7c7] bg-[#fff7f7] text-[#bd2727] hover:bg-[#fff0f0]";
+  return "border-[#cddcff] bg-[#f7faff] text-[#2f5edb] hover:bg-[#eef4ff]";
+}
+
+function getTimelineStatusText(date: string) {
+  if (!date) return "No date";
+  if (isToday(date)) return "Today";
+  if (isOverdue(date)) return "Overdue";
+  return "Due";
+}
+
+function formatCompactDate(value: string, fallback = "No date") {
+  if (!value) return fallback;
+  const formatted = formatDate(value, fallback);
+  return formatted.replace(/\s+\d{4}$/, "");
 }
 
 function isClosedLead(lead: Lead) {
