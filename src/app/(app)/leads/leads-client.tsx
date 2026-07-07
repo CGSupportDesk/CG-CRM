@@ -243,8 +243,8 @@ export function LeadsClient() {
                     <th className="w-[11%] px-3 py-3">Phone</th>
                     <th className="w-[9%] px-3 py-3">Temp</th>
                     <th className="w-[13%] px-3 py-3">Stage</th>
-                    <th className="w-[28%] px-3 py-3">Contact Plan</th>
-                    <th className="w-[11%] px-3 py-3">Actions</th>
+                    <th className="w-[30%] px-3 py-3">Contact Plan</th>
+                    <th className="w-[9%] px-2 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
@@ -298,27 +298,55 @@ export function LeadsClient() {
                           onMark={(item) => setMarkingFollowup({ lead, item })}
                         />
                       </td>
-                      <td className="px-3 py-4">
-                        <div className="grid grid-cols-3 justify-items-center gap-1.5">
-                          <Button variant="secondary" size="icon" title="Send WhatsApp" onClick={() => setWhatsappLead(lead)}>
-                            <MessageCircle className="h-4 w-4" />
+                      <td className="px-2 py-4">
+                        <div className="grid grid-cols-2 justify-items-center gap-1.5">
+                          <Button
+                            variant="secondary"
+                            size="icon"
+                            title="Send WhatsApp"
+                            className="h-8 w-8"
+                            onClick={() => setWhatsappLead(lead)}
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
                           </Button>
-                          <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
-                            <Eye className="h-4 w-4" />
+                          <Link
+                            href={`/leads/${lead.id}`}
+                            className={cn(buttonClasses("ghost", "icon"), "h-8 w-8")}
+                            title="Open lead"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
                           </Link>
-                          <span aria-hidden="true" className="h-9 w-9" />
                           {!lead.isArchived ? (
-                            <Button variant="ghost" size="icon" title="Archive lead" onClick={() => void archiveLead(lead.id)}>
-                              <Archive className="h-4 w-4" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Archive lead"
+                              className="h-8 w-8"
+                              onClick={() => void archiveLead(lead.id)}
+                            >
+                              <Archive className="h-3.5 w-3.5" />
                             </Button>
                           ) : (
-                            <span aria-hidden="true" className="h-9 w-9" />
+                            <span aria-hidden="true" className="h-8 w-8" />
                           )}
-                          <Button variant="danger" size="icon" title="Delete lead" onClick={() => removeLead(lead)}>
-                            <Trash2 className="h-4 w-4" />
+                          <Button
+                            variant="danger"
+                            size="icon"
+                            title="Delete lead"
+                            className="h-8 w-8"
+                            onClick={() => removeLead(lead)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Full edit" onClick={() => setEditingLead(lead)}>
-                            <Edit3 className="h-4 w-4" />
+                          <span aria-hidden="true" className="h-8 w-8" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Full edit"
+                            className="h-8 w-8"
+                            onClick={() => setEditingLead(lead)}
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </td>
