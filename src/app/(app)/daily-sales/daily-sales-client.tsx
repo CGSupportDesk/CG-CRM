@@ -160,8 +160,8 @@ function SalesQueue({
       {items.length ? (
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-1">
           {items.slice(0, 12).map(({ lead, latestFollowup }) => (
-            <div key={lead.id} className="rounded-2xl border border-border bg-surface-soft p-4">
-              <div className="flex items-start justify-between gap-3">
+            <div key={lead.id} className="min-w-0 rounded-2xl border border-border bg-surface-soft p-4">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <Link href={`/leads/${lead.id}`} className="font-semibold hover:underline">
                     {getDisplayName(lead)}
@@ -170,7 +170,7 @@ function SalesQueue({
                     {lead.phone || "No phone"} - {lead.assignedTo || "Naveen"}
                   </p>
                 </div>
-                <div className="flex flex-wrap justify-end gap-1.5">
+                <div className="flex max-w-full flex-wrap gap-1.5 sm:justify-end">
                   <Badge>{lead.leadTemperature}</Badge>
                   <Badge>{lead.leadStage}</Badge>
                 </div>
@@ -190,16 +190,19 @@ function SalesQueue({
                 </p>
               </div>
               {lead.remarks ? <p className="mt-3 line-clamp-2 text-sm text-muted">{lead.remarks}</p> : null}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="secondary" size="sm" onClick={() => onWhatsApp(lead)}>
+              <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
+                <Button className="w-full sm:w-auto" variant="secondary" size="sm" onClick={() => onWhatsApp(lead)}>
                   <MessageCircle className="h-4 w-4" />
                   WhatsApp
                 </Button>
-                <Button variant="secondary" size="sm" onClick={() => onLog(lead.id)}>
+                <Button className="w-full sm:w-auto" variant="secondary" size="sm" onClick={() => onLog(lead.id)}>
                   <CalendarPlus className="h-4 w-4" />
                   Log Follow-up
                 </Button>
-                <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-2 text-sm font-bold text-accent-dark">
+                <Link
+                  href={`/leads/${lead.id}`}
+                  className="inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-accent-dark transition hover:border-[#c2d1d8] hover:bg-surface-soft sm:w-auto"
+                >
                   Open <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
               </div>

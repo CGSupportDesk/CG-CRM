@@ -91,7 +91,7 @@ export function Panel({
   return (
     <section
       className={cn(
-        "rounded-[22px] border p-5 shadow-[0_18px_60px_rgba(22,44,55,0.08)]",
+        "min-w-0 rounded-[22px] border p-5 shadow-[0_18px_60px_rgba(22,44,55,0.08)]",
         dark
           ? "border-[#263740] bg-surface-strong text-white"
           : "border-border bg-white text-foreground",

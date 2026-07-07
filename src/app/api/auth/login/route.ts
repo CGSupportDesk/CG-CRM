@@ -4,6 +4,7 @@ import {
   getConfiguredUsername,
   getSessionToken,
   SESSION_COOKIE,
+  shouldUseSecureCookie,
 } from "@/lib/auth";
 
 export async function POST(request: Request) {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
   response.cookies.set(SESSION_COOKIE, getSessionToken(), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookie(request),
     path: "/",
     maxAge: 60 * 60 * 12,
   });

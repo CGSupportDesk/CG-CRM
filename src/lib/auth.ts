@@ -17,3 +17,10 @@ export function getSessionToken() {
 export function isValidSession(value?: string) {
   return Boolean(value && value === getSessionToken());
 }
+
+export function shouldUseSecureCookie(request: Request) {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedProto) return forwardedProto === "https";
+
+  return new URL(request.url).protocol === "https:";
+}
