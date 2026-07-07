@@ -9,6 +9,7 @@ import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { leadStageOptions, leadTemperatureOptions } from "@/lib/constants";
+import { formatFollowupDelay, getWorkingDayDelta } from "@/lib/followup-schedule";
 import type { FollowupDraft, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue } from "@/lib/utils";
 
@@ -189,21 +190,31 @@ export function LeadDetailClient({ id }: { id: string }) {
           </div>
           <div className="mt-5 space-y-3">
             {leadFollowups.length ? (
-              leadFollowups.map((followup) => (
-                <div key={followup.id} className="rounded-2xl border border-border bg-surface-soft p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold">{formatDate(followup.followupDate)}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge tone="info">{followup.followupType}</Badge>
-                      <Badge>{followup.outcome}</Badge>
+              leadFollowups.map((followup) => {
+                const delay = getWorkingDayDelta(followup.scheduledFollowupDate, followup.followupDate);
+                return (
+                  <div key={followup.id} className="rounded-2xl border border-border bg-surface-soft p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">Actual: {formatDate(followup.followupDate)}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          Scheduled: {formatDate(followup.scheduledFollowupDate, "No schedule")} - Marked:{" "}
+                          {formatDateTime(followup.markedAt || followup.createdAt)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={delay > 0 ? "warm" : "neutral"}>{formatFollowupDelay(delay)}</Badge>
+                        <Badge tone="info">{followup.followupType}</Badge>
+                        <Badge>{followup.outcome}</Badge>
+                      </div>
                     </div>
+                    <p className="mt-2 text-sm leading-6 text-muted">{followup.remarks || "No remarks."}</p>
+                    {followup.nextFollowupDate ? (
+                      <p className="mt-2 text-sm font-semibold">Next: {formatDate(followup.nextFollowupDate)}</p>
+                    ) : null}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-muted">{followup.remarks || "No remarks."}</p>
-                  {followup.nextFollowupDate ? (
-                    <p className="mt-2 text-sm font-semibold">Next: {formatDate(followup.nextFollowupDate)}</p>
-                  ) : null}
-                </div>
-              ))
+                );
+              })
             ) : (
               <EmptyState title="No follow-ups yet" description="Add the first call, WhatsApp, Instagram DM, or meeting record." />
             )}

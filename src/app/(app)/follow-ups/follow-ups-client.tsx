@@ -8,9 +8,10 @@ import { FollowupForm } from "@/components/followup-form";
 import { Badge, Button, EmptyState, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { DEFAULT_ASSIGNEE, assigneeOptions, followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
+import { formatFollowupDelay, getWorkingDayDelta } from "@/lib/followup-schedule";
 import { getFollowupTasks } from "@/lib/analytics";
 import type { FollowupDraft, Lead } from "@/lib/types";
-import { formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
+import { formatDate, formatDateTime, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 export function FollowUpsClient() {
   const { leads, followups, loading, addFollowup, updateFollowup, logLeadActivity } = useCRM();
@@ -106,11 +107,14 @@ export function FollowUpsClient() {
         {filteredHistory.length ? (
           <div className="mt-5 overflow-hidden rounded-[20px] border border-border">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
+              <table className="w-full min-w-[1120px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
                     <th className="px-4 py-3">Lead</th>
-                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Scheduled</th>
+                    <th className="px-4 py-3">Actual</th>
+                    <th className="px-4 py-3">Marked</th>
+                    <th className="px-4 py-3">Delay</th>
                     <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Outcome</th>
                     <th className="px-4 py-3">Next Date</th>
@@ -120,13 +124,19 @@ export function FollowUpsClient() {
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
                   {filteredHistory
-                    .sort((a, b) => b.followupDate.localeCompare(a.followupDate))
+                    .sort((a, b) => (b.markedAt || b.createdAt).localeCompare(a.markedAt || a.createdAt))
                     .map((followup) => {
                       const lead = leadById.get(followup.leadId);
+                      const delay = getWorkingDayDelta(followup.scheduledFollowupDate, followup.followupDate);
                       return (
                         <tr key={followup.id} className="align-top">
                           <td className="px-4 py-4 font-semibold">{lead ? getDisplayName(lead) : "Deleted lead"}</td>
+                          <td className="px-4 py-4">{formatDate(followup.scheduledFollowupDate, "No schedule")}</td>
                           <td className="px-4 py-4">{formatDate(followup.followupDate)}</td>
+                          <td className="px-4 py-4">{formatDateTime(followup.markedAt || followup.createdAt)}</td>
+                          <td className="px-4 py-4">
+                            <Badge tone={delay > 0 ? "warm" : "neutral"}>{formatFollowupDelay(delay)}</Badge>
+                          </td>
                           <td className="px-4 py-4"><Badge tone="info">{followup.followupType}</Badge></td>
                           <td className="px-4 py-4">
                             <select

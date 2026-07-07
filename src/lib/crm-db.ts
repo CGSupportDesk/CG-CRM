@@ -2,9 +2,11 @@ import "server-only";
 
 import { neon } from "@neondatabase/serverless";
 import {
+  formatFollowupDelay,
   getNextFollowupDateForLead,
   getNextFollowupDateForNewFollowup,
   getScheduledNextDateForFollowup,
+  getWorkingDayDelta,
   sortFollowups,
 } from "@/lib/followup-schedule";
 import { findImportDuplicate } from "@/lib/import-dedupe";
@@ -288,8 +290,11 @@ export async function deleteStudioSettingRecord(id: string) {
 export async function addFollowupRecord(draft: FollowupDraft) {
   await ensureCrmSchema();
 
+  const now = new Date().toISOString();
   const lead = await getLeadById(draft.leadId);
   const existingFollowups = await getFollowupsByLeadId(draft.leadId);
+  const scheduledFollowupDate = draft.scheduledFollowupDate || lead?.nextFollowupDate || draft.followupDate;
+  const markedAt = draft.markedAt || now;
   const nextFollowupDate = lead
     ? getNextFollowupDateForNewFollowup(
         lead,
@@ -300,9 +305,11 @@ export async function addFollowupRecord(draft: FollowupDraft) {
     : draft.nextFollowupDate;
   const followup: Followup = {
     ...draft,
+    scheduledFollowupDate,
+    markedAt,
     nextFollowupDate,
     id: createId("followup"),
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   };
   const inferredStage = inferLeadStageFromOutcome(draft.outcome, lead?.leadStage);
 
@@ -323,7 +330,12 @@ export async function addFollowupRecord(draft: FollowupDraft) {
   }
 
   await insertLogs([
-    buildLog(draft.leadId, "Follow-up added", "", draft.outcome),
+    buildLog(
+      draft.leadId,
+      "Follow-up added",
+      scheduledFollowupDate,
+      `${draft.outcome} - actual ${draft.followupDate} - marked ${markedAt.slice(0, 10)} - ${formatFollowupDelay(getWorkingDayDelta(scheduledFollowupDate, draft.followupDate))}`,
+    ),
     ...(lead && lead.leadStage !== inferredStage
       ? [buildLog(draft.leadId, "Stage updated", lead.leadStage, inferredStage)]
       : []),
@@ -342,17 +354,25 @@ export async function updateFollowupRecord(id: string, changes: Partial<Followup
   const existing = rows[0] ? mapFollowup(rows[0]) : null;
   if (!existing) return { state: await readCrmState(sql) };
 
-  const updated: Followup = { ...existing, ...changes, nextFollowupDate: existing.nextFollowupDate };
+  const updated: Followup = {
+    ...existing,
+    ...changes,
+    scheduledFollowupDate: changes.scheduledFollowupDate || existing.scheduledFollowupDate || existing.followupDate,
+    markedAt: changes.markedAt || existing.markedAt || existing.createdAt,
+    nextFollowupDate: existing.nextFollowupDate,
+  };
   await sql`
     update followups
     set
       lead_id = ${updated.leadId},
+      scheduled_followup_date = ${dateOrNull(updated.scheduledFollowupDate)},
       followup_date = ${dateOrNull(updated.followupDate)},
       followup_type = ${updated.followupType},
       outcome = ${updated.outcome},
       next_followup_date = ${dateOrNull(updated.nextFollowupDate)},
       remarks = ${updated.remarks},
-      created_by = ${updated.createdBy}
+      created_by = ${updated.createdBy},
+      marked_at = ${dateOrNull(updated.markedAt)}
     where id = ${id}
   `;
 
@@ -398,6 +418,8 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
       ...followup,
       id: createId("followup"),
       leadId: mergedLead.id,
+      scheduledFollowupDate: followup.scheduledFollowupDate || followup.followupDate,
+      markedAt: followup.markedAt || now,
       createdAt: now,
     }));
     const importedFollowupIds = new Set(importedRowFollowups.map((followup) => followup.id));
@@ -528,14 +550,29 @@ async function createSchema() {
     create table if not exists followups (
       id text primary key,
       lead_id text not null references leads(id) on delete cascade,
+      scheduled_followup_date date,
       followup_date date not null,
       followup_type text not null,
       outcome text not null,
       next_followup_date date,
       remarks text not null default '',
       created_by text not null default 'captain',
+      marked_at timestamptz,
       created_at timestamptz not null default now()
     )
+  `;
+
+  await sql`alter table followups add column if not exists scheduled_followup_date date`;
+  await sql`alter table followups add column if not exists marked_at timestamptz`;
+  await sql`
+    update followups
+    set scheduled_followup_date = followup_date
+    where scheduled_followup_date is null
+  `;
+  await sql`
+    update followups
+    set marked_at = created_at
+    where marked_at is null
   `;
 
   await sql`
@@ -625,6 +662,7 @@ async function createSchema() {
   await sql`create index if not exists leads_temperature_idx on leads (lead_temperature)`;
   await sql`create index if not exists leads_next_followup_idx on leads (next_followup_date)`;
   await sql`create index if not exists followups_lead_date_idx on followups (lead_id, followup_date desc)`;
+  await sql`create index if not exists followups_scheduled_date_idx on followups (lead_id, scheduled_followup_date desc)`;
   await sql`create index if not exists clients_lead_idx on clients (lead_id)`;
   await sql`create index if not exists clients_status_idx on clients (status)`;
   await sql`create index if not exists clients_renewal_idx on clients (renewal_date)`;
@@ -1307,27 +1345,31 @@ async function insertFollowups(followups: Followup[]) {
 
   await sql`
     insert into followups (
-      id, lead_id, followup_date, followup_type, outcome, next_followup_date, remarks, created_by, created_at
+      id, lead_id, scheduled_followup_date, followup_date, followup_type, outcome, next_followup_date, remarks, created_by, marked_at, created_at
     )
     select
       x."id",
       x."leadId",
+      coalesce(nullif(x."scheduledFollowupDate", '')::date, nullif(x."followupDate", '')::date),
       nullif(x."followupDate", '')::date,
       coalesce(x."followupType", 'Call'),
       coalesce(x."outcome", 'Call Back Later'),
       nullif(x."nextFollowupDate", '')::date,
       coalesce(x."remarks", ''),
       coalesce(x."createdBy", 'captain'),
+      coalesce(nullif(x."markedAt", '')::timestamptz, nullif(x."createdAt", '')::timestamptz, now()),
       coalesce(nullif(x."createdAt", '')::timestamptz, now())
     from jsonb_to_recordset(${JSON.stringify(followups)}::jsonb) as x(
       "id" text,
       "leadId" text,
+      "scheduledFollowupDate" text,
       "followupDate" text,
       "followupType" text,
       "outcome" text,
       "nextFollowupDate" text,
       "remarks" text,
       "createdBy" text,
+      "markedAt" text,
       "createdAt" text
     )
     on conflict (id) do nothing
@@ -1578,12 +1620,14 @@ function mapFollowup(row: Record<string, unknown>): Followup {
   return {
     id: text(row.id),
     leadId: text(row.lead_id),
+    scheduledFollowupDate: dateText(row.scheduled_followup_date) || dateText(row.followup_date),
     followupDate: dateText(row.followup_date),
     followupType: text(row.followup_type) as Followup["followupType"],
     outcome: text(row.outcome) as Followup["outcome"],
     nextFollowupDate: dateText(row.next_followup_date),
     remarks: text(row.remarks),
     createdBy: text(row.created_by),
+    markedAt: isoText(row.marked_at || row.created_at),
     createdAt: isoText(row.created_at),
   };
 }

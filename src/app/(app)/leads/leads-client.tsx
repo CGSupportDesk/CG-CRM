@@ -15,7 +15,12 @@ import {
   leadTemperatureOptions,
   serviceInterestOptions,
 } from "@/lib/constants";
-import { buildLeadContactTimeline, sortFollowups, type LeadContactTimelineItem } from "@/lib/followup-schedule";
+import {
+  buildLeadContactTimeline,
+  formatFollowupDelay,
+  getWorkingDayDelta,
+  type LeadContactTimelineItem,
+} from "@/lib/followup-schedule";
 import type {
   Followup,
   FollowupDraft,
@@ -27,7 +32,7 @@ import type {
   LeadTemperature,
 } from "@/lib/types";
 import { activeLeads } from "@/lib/analytics";
-import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue, isToday, todayIso } from "@/lib/utils";
 
 type SortMode = "created-desc" | "created-asc" | "followup-asc" | "temperature";
 type FollowupFilter = "all" | "today" | "overdue" | "no-date" | "upcoming";
@@ -398,7 +403,7 @@ export function LeadsClient() {
       {markingFollowup ? (
         <Modal
           title={`Mark ${markingFollowup.item.label}`}
-          description={`${getDisplayName(markingFollowup.lead)} - ${formatDate(markingFollowup.item.date)}`}
+          description={`${getDisplayName(markingFollowup.lead)} - scheduled ${formatDate(markingFollowup.item.date)}`}
           onClose={() => setMarkingFollowup(null)}
         >
           <ScheduledFollowupModal
@@ -422,12 +427,7 @@ function LeadContactChecklist({
   followups: Followup[];
   onMark: (item: Extract<LeadContactTimelineItem, { kind: "followup" }>) => void;
 }) {
-  const completedByDate = new Map(
-    sortFollowups(followups)
-      .filter((followup) => followup.followupDate)
-      .map((followup) => [followup.followupDate, followup]),
-  );
-  const timeline = buildLeadContactTimeline(lead.firstContactDate);
+  const timeline = buildLeadContactTimeline(lead.firstContactDate, followups);
   const contactItem = timeline.find((item) => item.kind === "contact");
   const followupItems = timeline.filter(
     (item): item is Extract<LeadContactTimelineItem, { kind: "followup" }> =>
@@ -460,13 +460,18 @@ function LeadContactChecklist({
 
       <div className="grid min-w-0 grid-cols-5 gap-1">
         {followupItems.map((item) => {
-          const completed = item.date ? completedByDate.get(item.date) : undefined;
+          const completed = item.completedFollowup;
           const checked = Boolean(completed);
           const disabled = !item.date || checked || lead.isArchived || isClosedLead(lead);
           const title = [
-            `${item.label}: ${formatDate(item.date, "No date")}`,
+            `${item.label} scheduled: ${formatDate(item.date, "No date")}`,
             checked
-              ? `Marked: ${completed?.remarks || completed?.outcome || "Done"}`
+              ? [
+                  `Actual: ${formatDate(item.actualDate || "", "No actual date")}`,
+                  `Marked: ${formatDateTime(item.markedAt || completed?.createdAt || "")}`,
+                  formatFollowupDelay(item.delayWorkingDays),
+                  completed?.remarks || completed?.outcome || "Done",
+                ].join(" - ")
               : getTimelineStatusText(item.date),
           ]
             .filter(Boolean)
@@ -477,7 +482,10 @@ function LeadContactChecklist({
               key={item.label}
               className={cn(
                 "grid min-w-0 cursor-pointer justify-items-start gap-0.5 rounded-lg border px-1.5 py-1 text-[10px] leading-none transition",
-                checked && "border-[#b8ead6] bg-[#f4fcf8] text-[#0c7c52]",
+                checked &&
+                  (item.delayWorkingDays && item.delayWorkingDays > 0
+                    ? "border-[#f1c36d] bg-[#fff8eb] text-[#9a5d00]"
+                    : "border-[#b8ead6] bg-[#f4fcf8] text-[#0c7c52]"),
                 !checked && item.date && getTimelineChipClass(item.date),
                 !item.date && "border-[#d8e0e4] bg-surface-soft text-muted opacity-75",
                 disabled && !checked && "cursor-not-allowed",
@@ -494,8 +502,13 @@ function LeadContactChecklist({
               />
               <span className="font-bold">{item.label}</span>
               <span className="max-w-full truncate text-[9px] font-semibold opacity-80">
-                {formatCompactDate(item.date, "No date")}
+                {formatCompactDate(checked ? item.actualDate || item.date : item.date, "No date")}
               </span>
+              {checked ? (
+                <span className="max-w-full truncate text-[8px] font-semibold opacity-75">
+                  {formatFollowupDelay(item.delayWorkingDays)}
+                </span>
+              ) : null}
             </label>
           );
         })}
@@ -517,8 +530,11 @@ function ScheduledFollowupModal({
 }) {
   const [followupType, setFollowupType] = useState<FollowupType>("Call");
   const [outcome, setOutcome] = useState<FollowupOutcome>("Call Back Later");
+  const [actualFollowupDate, setActualFollowupDate] = useState(todayIso());
+  const [markedAt] = useState(() => new Date().toISOString());
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
+  const delayText = formatFollowupDelay(getWorkingDayDelta(mark.item.date, actualFollowupDate));
 
   async function submit() {
     const trimmedRemarks = remarks.trim();
@@ -526,15 +542,21 @@ function ScheduledFollowupModal({
       setError("Add a short comment before marking this follow-up.");
       return;
     }
+    if (!actualFollowupDate) {
+      setError("Choose the actual follow-up date.");
+      return;
+    }
 
     await onSubmit({
       leadId: mark.lead.id,
-      followupDate: mark.item.date,
+      scheduledFollowupDate: mark.item.date,
+      followupDate: actualFollowupDate,
       followupType,
       outcome,
       nextFollowupDate: "",
       remarks: trimmedRemarks,
       createdBy: "captain",
+      markedAt,
     });
   }
 
@@ -550,6 +572,25 @@ function ScheduledFollowupModal({
         <FieldLabel label="Scheduled Date">
           <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
             {formatDate(mark.item.date)}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Actual Follow-up Date">
+          <input
+            type="date"
+            className={inputClasses}
+            value={actualFollowupDate}
+            onInput={(event) => setActualFollowupDate(event.currentTarget.value)}
+            onChange={(event) => setActualFollowupDate(event.target.value)}
+          />
+        </FieldLabel>
+        <FieldLabel label="Marked Date">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDateTime(markedAt)}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Delay Tracking">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {delayText}
           </div>
         </FieldLabel>
         <FieldLabel label="Follow-up Type">

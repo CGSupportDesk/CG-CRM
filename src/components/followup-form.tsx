@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Button, FieldLabel, inputClasses } from "@/components/ui";
 import { followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
-import { getNextFollowupDateForNewFollowup } from "@/lib/followup-schedule";
+import { formatFollowupDelay, getNextFollowupDateForNewFollowup, getWorkingDayDelta } from "@/lib/followup-schedule";
 import type { Followup, FollowupDraft, Lead } from "@/lib/types";
-import { formatDate, todayIso } from "@/lib/utils";
+import { formatDate, formatDateTime, todayIso } from "@/lib/utils";
 
 export function FollowupForm({
   leads,
@@ -29,9 +29,11 @@ export function FollowupForm({
     remarks: "",
     createdBy: "captain",
   });
+  const [markedAt] = useState(() => new Date().toISOString());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const selectedLead = leads.find((lead) => lead.id === draft.leadId);
   const existingFollowups = followups.filter((followup) => followup.leadId === draft.leadId);
+  const scheduledFollowupDate = draft.scheduledFollowupDate || selectedLead?.nextFollowupDate || draft.followupDate;
   const calculatedNextFollowupDate = selectedLead
     ? getNextFollowupDateForNewFollowup(
         selectedLead,
@@ -52,7 +54,12 @@ export function FollowupForm({
     setErrors(nextErrors);
 
     if (!Object.keys(nextErrors).length) {
-      onSubmit({ ...draft, nextFollowupDate: calculatedNextFollowupDate });
+      onSubmit({
+        ...draft,
+        scheduledFollowupDate,
+        markedAt,
+        nextFollowupDate: calculatedNextFollowupDate,
+      });
     }
   }
 
@@ -80,13 +87,29 @@ export function FollowupForm({
             </select>
           </FieldLabel>
         ) : null}
-        <FieldLabel label="Follow-up Date" error={errors.followupDate}>
+        <FieldLabel label="Actual Follow-up Date" error={errors.followupDate}>
           <input
             type="date"
             className={inputClasses}
             value={draft.followupDate}
+            onInput={(event) => setField("followupDate", event.currentTarget.value)}
             onChange={(event) => setField("followupDate", event.target.value)}
           />
+        </FieldLabel>
+        <FieldLabel label="Scheduled Date (Plan)">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDate(scheduledFollowupDate, "No scheduled date")}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Marked Date">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDateTime(markedAt)}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Delay Tracking">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatFollowupDelay(getWorkingDayDelta(scheduledFollowupDate, draft.followupDate))}
+          </div>
         </FieldLabel>
         <FieldLabel label="Follow-up Type">
           <select

@@ -82,16 +82,24 @@ export type LeadDraft = Omit<
 export interface Followup {
   id: string;
   leadId: string;
+  scheduledFollowupDate: string;
   followupDate: string;
   followupType: FollowupType;
   outcome: FollowupOutcome;
   nextFollowupDate: string;
   remarks: string;
   createdBy: string;
+  markedAt: string;
   createdAt: string;
 }
 
-export type FollowupDraft = Omit<Followup, "id" | "createdAt">;
+export type FollowupDraft = Omit<
+  Followup,
+  "id" | "createdAt" | "scheduledFollowupDate" | "markedAt"
+> & {
+  scheduledFollowupDate?: string;
+  markedAt?: string;
+};
 
 export interface ActivityLog {
   id: string;

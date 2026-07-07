@@ -3,9 +3,11 @@ import {
   addWorkingDays,
   buildFollowupSchedule,
   buildLeadContactTimeline,
+  formatFollowupDelay,
   getInitialLeadNextFollowupDate,
   getNextFollowupDateForLead,
   getNextFollowupDateForNewFollowup,
+  getWorkingDayDelta,
 } from "../src/lib/followup-schedule";
 import {
   findImportDuplicate,
@@ -54,6 +56,27 @@ assert.deepEqual(
     "F5:2026-07-27",
   ],
 );
+const delayedTimeline = buildLeadContactTimeline("2026-07-06", [
+  {
+    followupDate: "2026-07-08",
+    scheduledFollowupDate: "2026-07-07",
+    outcome: "Call Back Later",
+    createdAt: "2026-07-08T09:00:00.000Z",
+  },
+]);
+assert.deepEqual(
+  delayedTimeline.map((item) => `${item.label}:${item.date}:${item.kind === "followup" ? item.actualDate || "" : ""}`),
+  [
+    "Contacted:2026-07-06:",
+    "F1:2026-07-07:2026-07-08",
+    "F2:2026-07-10:",
+    "F3:2026-07-14:",
+    "F4:2026-07-17:",
+    "F5:2026-07-22:",
+  ],
+);
+assert.equal(getWorkingDayDelta("2026-07-10", "2026-07-13"), 1);
+assert.equal(formatFollowupDelay(getWorkingDayDelta("2026-07-10", "2026-07-13")), "1 working day late");
 assert.equal(addWorkingDays("2026-07-11", 1), "2026-07-13");
 assert.equal(getInitialLeadNextFollowupDate("2026-07-10", "Follow-up Needed"), "2026-07-13");
 assert.equal(getInitialLeadNextFollowupDate("2026-07-10", "Won"), "");

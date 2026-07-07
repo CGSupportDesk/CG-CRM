@@ -7,6 +7,9 @@ const TERMINAL_FOLLOWUP_OUTCOMES: FollowupOutcome[] = ["Converted", "Rejected"];
 
 type ScheduleFollowup = Pick<Followup, "followupDate" | "outcome" | "createdAt"> & {
   id?: string;
+  markedAt?: string;
+  remarks?: string;
+  scheduledFollowupDate?: string;
 };
 
 export type LeadContactTimelineItem =
@@ -20,8 +23,12 @@ export type LeadContactTimelineItem =
       kind: "followup";
       label: string;
       date: string;
+      actualDate?: string;
+      completedFollowup?: ScheduleFollowup;
+      delayWorkingDays?: number;
       followupNumber: number;
       contactNumber: number;
+      markedAt?: string;
     };
 
 export function addWorkingDays(startIso: string, workingDays: number) {
@@ -48,6 +55,7 @@ export function buildFollowupSchedule(firstContactDate: string) {
 
 export function buildLeadContactTimeline(
   firstContactDate: string,
+  followups: ScheduleFollowup[] = [],
   followupCount = 5,
 ): LeadContactTimelineItem[] {
   const timeline: LeadContactTimelineItem[] = [
@@ -60,18 +68,25 @@ export function buildLeadContactTimeline(
   ];
 
   let previousDate = firstContactDate;
+  const completedFollowups = sortFollowups(followups);
   for (let index = 1; index <= followupCount; index += 1) {
     const nextDate = previousDate
       ? getNextFollowupDateAfterContact(previousDate, index)
       : "";
+    const completedFollowup = completedFollowups[index - 1];
+    const actualDate = completedFollowup?.followupDate || "";
     timeline.push({
       kind: "followup",
       label: `F${index}`,
       date: nextDate,
+      actualDate,
+      completedFollowup,
+      delayWorkingDays: actualDate ? getWorkingDayDelta(nextDate, actualDate) : undefined,
       followupNumber: index,
       contactNumber: index + 1,
+      markedAt: completedFollowup?.markedAt || completedFollowup?.createdAt || "",
     });
-    previousDate = nextDate;
+    previousDate = actualDate || nextDate;
   }
 
   return timeline;
@@ -146,6 +161,33 @@ export function sortFollowups<T extends ScheduleFollowup>(followups: T[]) {
     if (dateCompare !== 0) return dateCompare;
     return (a.createdAt || "").localeCompare(b.createdAt || "");
   });
+}
+
+export function getWorkingDayDelta(startIso: string, endIso: string) {
+  const startDate = parseIsoDate(startIso);
+  const endDate = parseIsoDate(endIso);
+  if (!startDate || !endDate || startIso === endIso) return 0;
+
+  const direction = endDate > startDate ? 1 : -1;
+  let delta = 0;
+  const cursor = new Date(startDate);
+
+  while (toIsoDate(cursor) !== endIso) {
+    cursor.setUTCDate(cursor.getUTCDate() + direction);
+    if (isWorkingDay(cursor)) delta += direction;
+  }
+
+  return delta;
+}
+
+export function formatFollowupDelay(delayWorkingDays?: number) {
+  if (!delayWorkingDays) return "On time";
+
+  const absoluteDays = Math.abs(delayWorkingDays);
+  const suffix = absoluteDays === 1 ? "working day" : "working days";
+  return delayWorkingDays > 0
+    ? `${absoluteDays} ${suffix} late`
+    : `${absoluteDays} ${suffix} early`;
 }
 
 export function isTerminalStage(stage?: LeadStage) {
