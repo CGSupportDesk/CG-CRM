@@ -6,8 +6,8 @@ import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
-import { assigneeOptions, clientStatusOptions, serviceInterestOptions } from "@/lib/constants";
-import type { ClientStatus, StudioClient, StudioClientDraft } from "@/lib/types";
+import { assigneeOptions, clientStatusOptions, paymentStatusOptions, serviceInterestOptions } from "@/lib/constants";
+import type { ClientStatus, PaymentStatus, StudioClient, StudioClientDraft } from "@/lib/types";
 import { formatCurrency, formatDate, getDisplayName, todayIso } from "@/lib/utils";
 
 export function ClientsClient() {
@@ -79,10 +79,11 @@ export function ClientsClient() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <ClientMetric label="Total Clients" value={clients.length} />
         <ClientMetric label="Active" value={clients.filter((client) => client.status === "Active").length} />
         <ClientMetric label="Renewal Due" value={clients.filter((client) => client.status === "Renewal Due").length} />
+        <ClientMetric label="Payment Overdue" value={clients.filter((client) => client.paymentStatus === "Overdue").length} />
         <ClientMetric
           label="Monthly Value"
           value={formatCurrency(clients.filter((client) => client.status !== "Closed").reduce((sum, client) => sum + client.monthlyValue, 0))}
@@ -117,7 +118,7 @@ export function ClientsClient() {
         {filteredClients.length ? (
           <div className="overflow-hidden rounded-[20px] border border-border">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] text-left text-sm">
+              <table className="w-full min-w-[1040px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
                     <th className="px-4 py-3">Client</th>
@@ -125,6 +126,7 @@ export function ClientsClient() {
                     <th className="px-4 py-3">Owner</th>
                     <th className="px-4 py-3">Renewal</th>
                     <th className="px-4 py-3">Projects</th>
+                    <th className="px-4 py-3">Payment</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Actions</th>
                   </tr>
@@ -146,6 +148,7 @@ export function ClientsClient() {
                       <td className="px-4 py-4">{client.owner}</td>
                       <td className="px-4 py-4">{formatDate(client.renewalDate)}</td>
                       <td className="px-4 py-4 font-mono font-bold">{projectCountByClient[client.id] || 0}</td>
+                      <td className="px-4 py-4"><Badge>{client.paymentStatus}</Badge></td>
                       <td className="px-4 py-4"><Badge>{client.status}</Badge></td>
                       <td className="px-4 py-4">
                         <div className="flex gap-2">
@@ -241,6 +244,7 @@ function ClientForm({
     monthlyValue: client?.monthlyValue || firstLead?.expectedValue || 5000,
     owner: client?.owner || firstLead?.assignedTo || "Naveen",
     status: client?.status || "Active",
+    paymentStatus: client?.paymentStatus || "Not Started",
     startDate: client?.startDate || todayIso(),
     renewalDate: client?.renewalDate || "",
     notes: client?.notes || firstLead?.remarks || "",
@@ -266,6 +270,7 @@ function ClientForm({
       packageName: lead.serviceInterest,
       monthlyValue: lead.expectedValue,
       owner: lead.assignedTo || current.owner,
+      paymentStatus: current.paymentStatus,
       notes: lead.remarks,
     }));
   }
@@ -318,6 +323,11 @@ function ClientForm({
         <FieldLabel label="Status">
           <select className={inputClasses} value={draft.status} onChange={(event) => update("status", event.target.value as ClientStatus)}>
             {clientStatusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Payment Status">
+          <select className={inputClasses} value={draft.paymentStatus} onChange={(event) => update("paymentStatus", event.target.value as PaymentStatus)}>
+            {paymentStatusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </FieldLabel>
         <FieldLabel label="Start Date">

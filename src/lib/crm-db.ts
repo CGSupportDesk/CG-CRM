@@ -7,6 +7,7 @@ import {
   getScheduledNextDateForFollowup,
   sortFollowups,
 } from "@/lib/followup-schedule";
+import { findImportDuplicate } from "@/lib/import-dedupe";
 import { DEFAULT_ASSIGNEE } from "@/lib/constants";
 import { normalizeLeadForStorage } from "@/lib/lead-normalization";
 import { buildPosterCampaignSeed } from "@/lib/poster-campaign";
@@ -369,53 +370,109 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
   await ensureCrmSchema();
 
   const now = new Date().toISOString();
-  const importedLeads: Lead[] = rows.map((row) =>
-    normalizeLeadForStorage(
+  const existingState = await readCrmState();
+  const matchingPool = [...existingState.leads];
+  const logs: ActivityLog[] = [];
+  let leadsCreated = 0;
+  let leadsUpdated = 0;
+  let followupsImported = 0;
+
+  for (const row of rows) {
+    const duplicate = findImportDuplicate(row.lead, matchingPool);
+    const existingLead = duplicate
+      ? matchingPool.find((lead) => lead.id === duplicate.leadId) || null
+      : null;
+    const baseLead = normalizeLeadForStorage(
       {
         ...row.lead,
-        id: createId("lead"),
-        isArchived: false,
-        createdAt: now,
+        id: existingLead?.id || createId("lead"),
+        isArchived: existingLead?.isArchived || false,
+        createdAt: existingLead?.createdAt || now,
         updatedAt: now,
       },
       { preferUrlSource: true, sourceFallback: "CSV Import" },
-    ),
-  );
-  const leadByRow = new Map(rows.map((row, index) => [row.rowNumber, importedLeads[index]]));
-  const rawImportedFollowups: Followup[] = rows.flatMap((row) => {
-    const lead = leadByRow.get(row.rowNumber);
-    if (!lead) return [];
-
-    return row.followups.map((followup) => ({
+    );
+    const mergedLead = existingLead ? mergeImportedLead(existingLead, baseLead, now) : baseLead;
+    const existingFollowups = existingLead ? await getFollowupsByLeadId(existingLead.id) : [];
+    const importedRowFollowups: Followup[] = row.followups.map((followup) => ({
       ...followup,
       id: createId("followup"),
-      leadId: lead.id,
+      leadId: mergedLead.id,
       createdAt: now,
     }));
-  });
-  const groupedFollowups = new Map<string, Followup[]>();
-  rawImportedFollowups.forEach((followup) => {
-    const current = groupedFollowups.get(followup.leadId) || [];
-    groupedFollowups.set(followup.leadId, [...current, followup]);
-  });
-  const scheduledPairs = importedLeads.map((lead) =>
-    applyScheduleToLeadAndFollowups(lead, groupedFollowups.get(lead.id) || []),
-  );
-  const scheduledLeads = scheduledPairs.map((pair) => pair.lead);
-  const importedFollowups = scheduledPairs.flatMap((pair) => pair.followups);
-  const logs = importedLeads.map((lead) =>
-    buildLog(lead.id, "Lead imported from CSV", "", lead.leadStage),
-  );
+    const importedFollowupIds = new Set(importedRowFollowups.map((followup) => followup.id));
+    const scheduled = applyScheduleToLeadAndFollowups(mergedLead, [
+      ...existingFollowups,
+      ...importedRowFollowups,
+    ]);
+    const scheduledImportedFollowups = scheduled.followups.filter((followup) =>
+      importedFollowupIds.has(followup.id),
+    );
 
-  await insertLeads(scheduledLeads);
-  await insertFollowups(importedFollowups);
+    if (existingLead) {
+      await updateLead(scheduled.lead);
+      await writeScheduleChanges(scheduled, existingLead, existingFollowups);
+      logs.push(buildLog(scheduled.lead.id, "Lead updated from CSV import", duplicate?.reason || "", scheduled.lead.leadStage));
+      leadsUpdated += 1;
+    } else {
+      await insertLead(scheduled.lead);
+      logs.push(buildLog(scheduled.lead.id, "Lead imported from CSV", "", scheduled.lead.leadStage));
+      leadsCreated += 1;
+    }
+
+    await insertFollowups(scheduledImportedFollowups);
+    followupsImported += scheduledImportedFollowups.length;
+
+    const poolIndex = matchingPool.findIndex((lead) => lead.id === scheduled.lead.id);
+    if (poolIndex >= 0) matchingPool[poolIndex] = scheduled.lead;
+    else matchingPool.push(scheduled.lead);
+  }
+
   await insertLogs(logs);
 
   return {
-    leadsImported: importedLeads.length,
-    followupsImported: importedFollowups.length,
-    skippedRows: Math.max(rows.length - importedLeads.length, 0),
+    leadsImported: leadsCreated + leadsUpdated,
+    leadsCreated,
+    leadsUpdated,
+    duplicateMatches: leadsUpdated,
+    followupsImported,
+    skippedRows: Math.max(rows.length - leadsCreated - leadsUpdated, 0),
   };
+}
+
+function mergeImportedLead(existing: Lead, imported: Lead, now: string): Lead {
+  return normalizeLeadForStorage(
+    {
+      ...existing,
+      leadUrl: preferImported(imported.leadUrl, existing.leadUrl),
+      leadName: preferImported(imported.leadName, existing.leadName),
+      businessName: preferImported(imported.businessName, existing.businessName),
+      contactPerson: preferImported(imported.contactPerson, existing.contactPerson),
+      phone: preferImported(imported.phone, existing.phone),
+      email: preferImported(imported.email, existing.email),
+      industry: preferImported(imported.industry, existing.industry),
+      location: preferImported(imported.location, existing.location),
+      source: preferImported(imported.source, existing.source),
+      leadTemperature: imported.leadTemperature || existing.leadTemperature,
+      leadStage: imported.leadStage || existing.leadStage,
+      serviceInterest: imported.serviceInterest || existing.serviceInterest,
+      expectedValue: Number(imported.expectedValue || existing.expectedValue || 0),
+      objectionReason: imported.objectionReason || existing.objectionReason,
+      firstContactDate: preferImported(imported.firstContactDate, existing.firstContactDate),
+      nextFollowupDate: imported.nextFollowupDate || existing.nextFollowupDate,
+      remarks: preferImported(imported.remarks, existing.remarks),
+      assignedTo: preferImported(imported.assignedTo, existing.assignedTo),
+      id: existing.id,
+      isArchived: existing.isArchived,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+    },
+    { preferUrlSource: true, sourceFallback: "CSV Import" },
+  );
+}
+
+function preferImported(imported: string, existing: string) {
+  return imported.trim() ? imported : existing;
 }
 
 export async function resetCrmFromPrivateSeed() {
@@ -507,6 +564,7 @@ async function createSchema() {
       monthly_value numeric(12, 2) not null default 0,
       owner text not null default 'Naveen',
       status text not null default 'Active',
+      payment_status text not null default 'Not Started',
       start_date date,
       renewal_date date,
       notes text not null default '',
@@ -514,6 +572,8 @@ async function createSchema() {
       updated_at timestamptz not null default now()
     )
   `;
+
+  await sql`alter table clients add column if not exists payment_status text not null default 'Not Started'`;
 
   await sql`
     create table if not exists projects (
@@ -1043,13 +1103,15 @@ async function insertClient(client: StudioClient) {
   await sql`
     insert into clients (
       id, lead_id, client_name, contact_person, phone, email, industry, location,
-      package_name, monthly_value, owner, status, start_date, renewal_date, notes, created_at, updated_at
+      package_name, monthly_value, owner, status, payment_status, start_date, renewal_date,
+      notes, created_at, updated_at
     )
     values (
       ${client.id}, ${client.leadId || null}, ${client.clientName}, ${client.contactPerson},
       ${client.phone}, ${client.email}, ${client.industry}, ${client.location}, ${client.packageName},
-      ${client.monthlyValue}, ${client.owner}, ${client.status}, ${dateOrNull(client.startDate)},
-      ${dateOrNull(client.renewalDate)}, ${client.notes}, ${client.createdAt}, ${client.updatedAt}
+      ${client.monthlyValue}, ${client.owner}, ${client.status}, ${client.paymentStatus},
+      ${dateOrNull(client.startDate)}, ${dateOrNull(client.renewalDate)}, ${client.notes},
+      ${client.createdAt}, ${client.updatedAt}
     )
     on conflict (id) do update
     set
@@ -1064,6 +1126,7 @@ async function insertClient(client: StudioClient) {
       monthly_value = excluded.monthly_value,
       owner = excluded.owner,
       status = excluded.status,
+      payment_status = excluded.payment_status,
       start_date = excluded.start_date,
       renewal_date = excluded.renewal_date,
       notes = excluded.notes,
@@ -1088,6 +1151,7 @@ async function updateClient(client: StudioClient) {
       monthly_value = ${client.monthlyValue},
       owner = ${client.owner},
       status = ${client.status},
+      payment_status = ${client.paymentStatus},
       start_date = ${dateOrNull(client.startDate)},
       renewal_date = ${dateOrNull(client.renewalDate)},
       notes = ${client.notes},
@@ -1319,6 +1383,7 @@ function buildClientFromDraft(draft: StudioClientDraft): StudioClient {
     clientName: draft.clientName || draft.contactPerson || "Untitled client",
     owner: draft.owner || DEFAULT_ASSIGNEE,
     status: draft.status || "Active",
+    paymentStatus: draft.paymentStatus || "Not Started",
     monthlyValue: Number(draft.monthlyValue || 0),
     startDate: draft.startDate || todayIso(),
     renewalDate: draft.renewalDate || offsetDate(30),
@@ -1384,6 +1449,7 @@ function clientDraftFromLead(lead: Lead): StudioClientDraft {
     monthlyValue: lead.expectedValue,
     owner: lead.assignedTo || DEFAULT_ASSIGNEE,
     status: "Active",
+    paymentStatus: "Not Started",
     startDate: todayIso(),
     renewalDate: offsetDate(30),
     notes: lead.remarks,
@@ -1548,6 +1614,7 @@ function mapClient(row: Record<string, unknown>): StudioClient {
     monthlyValue: Number(row.monthly_value || 0),
     owner: text(row.owner),
     status: text(row.status) as StudioClient["status"],
+    paymentStatus: (text(row.payment_status) || "Not Started") as StudioClient["paymentStatus"],
     startDate: dateText(row.start_date),
     renewalDate: dateText(row.renewal_date),
     notes: text(row.notes),

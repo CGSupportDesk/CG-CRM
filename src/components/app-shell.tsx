@@ -32,6 +32,7 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   "Poster Calendar": ClipboardList,
   "Website Projects": Sparkles,
   Payments: CircleDollarSign,
+  "Daily Sales": ClipboardList,
   Settings,
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Edit3, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarDays, Edit3, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
@@ -33,6 +33,16 @@ export function PosterCalendarClient() {
   const monthSlots = posterSlots
     .filter((slot) => slot.slotDate.startsWith(month))
     .sort((a, b) => a.slotDate.localeCompare(b.slotDate));
+  const workflowColumns = posterSlotStatusOptions.map((status) => ({
+    status,
+    slots: monthSlots.filter((slot) => slot.status === status),
+  }));
+  const designerWorkload = designerOptions
+    .map((designer) => ({
+      designer,
+      count: monthSlots.filter((slot) => slot.designer === designer && slot.status !== "Posted").length,
+    }))
+    .filter((item) => item.count > 0);
 
   async function generateSlots() {
     if (!selectedProjectId) return;
@@ -105,6 +115,78 @@ export function PosterCalendarClient() {
         <CalendarMetric label="Scheduled" value={monthSlots.filter((slot) => slot.status === "Scheduled").length} />
         <CalendarMetric label="Posted" value={monthSlots.filter((slot) => slot.status === "Posted").length} />
       </div>
+
+      <Panel className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Production workflow</h2>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Move monthly posters through design, review, approval, scheduling, and posting.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {designerWorkload.length ? (
+              designerWorkload.map((item) => (
+                <Badge key={item.designer} tone="info">
+                  {item.designer}: {item.count}
+                </Badge>
+              ))
+            ) : (
+              <Badge tone="success">No active workload</Badge>
+            )}
+          </div>
+        </div>
+
+        {monthSlots.length ? (
+          <div className="grid gap-3 xl:grid-cols-6">
+            {workflowColumns.map(({ status, slots }) => (
+              <div key={status} className="rounded-2xl border border-border bg-surface-soft p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge>{status}</Badge>
+                  <span className="font-mono text-sm font-bold text-muted">{slots.length}</span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {slots.slice(0, 5).map((slot) => {
+                    const client = clientById.get(slot.clientId);
+                    const nextStatus = getNextPosterStatus(slot.status);
+                    return (
+                      <div key={slot.id} className="rounded-xl border border-border bg-white p-3">
+                        <p className="line-clamp-2 text-sm font-semibold">{slot.title}</p>
+                        <p className="mt-1 text-xs text-muted">{client?.clientName || "Unknown client"}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {formatDate(slot.slotDate)} - {slot.designer}
+                        </p>
+                        {nextStatus ? (
+                          <Button
+                            className="mt-3 w-full"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => void updatePosterSlot(slot.id, { status: nextStatus })}
+                          >
+                            Move to {nextStatus}
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  {!slots.length ? (
+                    <p className="rounded-xl border border-dashed border-border bg-white p-3 text-center text-xs font-semibold text-muted">
+                      Empty
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No workflow slots"
+            description="Generate this month's poster slots to start production tracking."
+            action={<Button onClick={generateSlots} disabled={!selectedProjectId}>Generate Slots</Button>}
+          />
+        )}
+      </Panel>
 
       <Panel>
         {monthSlots.length ? (
@@ -302,4 +384,9 @@ function CalendarMetric({ label, value }: { label: string; value: string | numbe
       <p className="mt-2 font-mono text-3xl font-bold tracking-tight">{value}</p>
     </Panel>
   );
+}
+
+function getNextPosterStatus(status: PosterSlotStatus): PosterSlotStatus | "" {
+  const index = posterSlotStatusOptions.indexOf(status);
+  return posterSlotStatusOptions[index + 1] || "";
 }

@@ -105,6 +105,13 @@ export interface ActivityLog {
 
 export type ClientStatus = "Active" | "Onboarding" | "Paused" | "Renewal Due" | "Closed";
 
+export type PaymentStatus =
+  | "Not Started"
+  | "Advance Paid"
+  | "Partially Paid"
+  | "Paid"
+  | "Overdue";
+
 export interface StudioClient {
   id: string;
   leadId: string;
@@ -118,6 +125,7 @@ export interface StudioClient {
   monthlyValue: number;
   owner: string;
   status: ClientStatus;
+  paymentStatus: PaymentStatus;
   startDate: string;
   renewalDate: string;
   notes: string;
@@ -228,6 +236,9 @@ export interface ImportPreview {
 
 export interface ImportSummary {
   leadsImported: number;
+  leadsCreated: number;
+  leadsUpdated: number;
+  duplicateMatches: number;
   followupsImported: number;
   skippedRows: number;
 }

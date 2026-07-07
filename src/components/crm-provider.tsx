@@ -169,6 +169,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       return (
         result.summary || {
           leadsImported: 0,
+          leadsCreated: 0,
+          leadsUpdated: 0,
+          duplicateMatches: 0,
           followupsImported: 0,
           skippedRows: rows.length,
         }

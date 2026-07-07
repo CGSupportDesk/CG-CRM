@@ -56,6 +56,7 @@ export function ClientDetailClient({ id }: { id: string }) {
         <Panel dark className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{client.status}</Badge>
+            <Badge>{client.paymentStatus}</Badge>
             <Badge tone="info">{client.packageName}</Badge>
           </div>
           <div>
@@ -72,8 +73,14 @@ export function ClientDetailClient({ id }: { id: string }) {
           <div className="grid gap-3 sm:grid-cols-2">
             <DarkMetric label="Monthly Value" value={formatCurrency(client.monthlyValue)} />
             <DarkMetric label="Owner" value={client.owner || "Naveen"} />
+            <DarkMetric label="Projects" value={String(clientProjects.length)} />
+            <DarkMetric label="Payment" value={client.paymentStatus} />
             <DarkMetric label="Start Date" value={formatDate(client.startDate)} />
             <DarkMetric label="Renewal Date" value={formatDate(client.renewalDate)} />
+          </div>
+          <div className="rounded-2xl bg-white/8 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#aebcc4]">Notes</p>
+            <p className="mt-2 text-sm leading-6 text-[#cad6dc]">{client.notes || "No client notes added yet."}</p>
           </div>
         </Panel>
 

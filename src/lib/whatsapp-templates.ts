@@ -21,7 +21,13 @@ export const whatsappTemplateContext = `
 
 type WhatsappRecipient = Pick<
   Lead,
-  "leadName" | "businessName" | "contactPerson" | "phone" | "industry" | "remarks"
+  | "leadName"
+  | "businessName"
+  | "contactPerson"
+  | "phone"
+  | "industry"
+  | "remarks"
+  | "leadStage"
 > | Pick<StudioClient, "clientName" | "contactPerson" | "phone" | "industry" | "notes">;
 
 export function getWhatsappRecipientName(recipient: WhatsappRecipient) {
@@ -33,7 +39,8 @@ export function getWhatsappRecipientName(recipient: WhatsappRecipient) {
 }
 
 export function getDefaultWhatsappTemplate(recipient?: WhatsappRecipient): WhatsappTemplateKey {
-  if (!recipient || "clientName" in recipient) return "Will think about it";
+  if (!recipient) return "Custom Message";
+  if ("clientName" in recipient) return "Will think about it";
 
   const remarks = recipient.remarks.toLowerCase();
   if (remarks.includes("seen") || remarks.includes("no reply")) return "Seen but no reply";
@@ -50,6 +57,13 @@ export function getDefaultWhatsappTemplate(recipient?: WhatsappRecipient): Whats
     return "Will think about it";
   }
   if (remarks.includes("details") || remarks.includes("gallery")) return "Send me Details";
+  if (recipient.leadStage === "No Response") return "Didnt answer the call";
+  if (recipient.leadStage === "Details Sent" || recipient.leadStage === "Proposal Sent") {
+    return "Will think about it";
+  }
+  if (recipient.leadStage === "New Lead" || recipient.leadStage === "Contacted") {
+    return "Send me Details";
+  }
 
   return recipient.phone ? "Send me Details" : "Custom Message";
 }

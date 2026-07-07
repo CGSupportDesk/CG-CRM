@@ -1,21 +1,26 @@
 "use client";
 
 import { FileUp, Sparkles, UploadCloud } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, Panel } from "@/components/ui";
 import { parseLegacyLeadCsv } from "@/lib/csv-import";
+import { summarizeImportDuplicates } from "@/lib/import-dedupe";
 import type { ImportCleanupResult, ImportCleanupRowSuggestion, ImportPreview, ImportSummary, LeadDraft } from "@/lib/types";
 import { dateOnlyText, formatDate } from "@/lib/utils";
 
 export function CsvImporter() {
-  const { importLegacyRows } = useCRM();
+  const { importLegacyRows, leads } = useCRM();
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupMessage, setCleanupMessage] = useState("");
   const [cleanupError, setCleanupError] = useState("");
+  const duplicatePreview = useMemo(
+    () => (preview ? summarizeImportDuplicates(preview.rows, leads) : null),
+    [leads, preview],
+  );
 
   async function handleFile(file?: File) {
     if (!file) return;
@@ -107,8 +112,10 @@ export function CsvImporter() {
       ) : null}
 
       {summary ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <ImportMetric label="Leads imported" value={summary.leadsImported} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <ImportMetric label="Rows processed" value={summary.leadsImported} />
+          <ImportMetric label="New leads" value={summary.leadsCreated} />
+          <ImportMetric label="Updated leads" value={summary.leadsUpdated} />
           <ImportMetric label="Follow-up records created" value={summary.followupsImported} />
           <ImportMetric label="Skipped rows" value={summary.skippedRows} />
         </div>
@@ -123,6 +130,10 @@ export function CsvImporter() {
                 {preview.errors.length} parse errors
               </Badge>
               <Badge tone="neutral">{preview.totalRows} total rows</Badge>
+              <Badge tone="success">{duplicatePreview?.createCount || 0} new</Badge>
+              <Badge tone={(duplicatePreview?.duplicateCount || 0) ? "warm" : "muted"}>
+                {duplicatePreview?.duplicateCount || 0} update existing
+              </Badge>
             </div>
             <Button onClick={importRows} disabled={!preview.rows.length || loading}>
               <FileUp className="h-4 w-4" />
@@ -169,28 +180,44 @@ export function CsvImporter() {
                     <th className="px-4 py-3">Mapped Status</th>
                     <th className="px-4 py-3">First Contact</th>
                     <th className="px-4 py-3">Auto Next</th>
+                    <th className="px-4 py-3">Import Action</th>
                     <th className="px-4 py-3">Warnings</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-white">
-                  {preview.rows.map((row) => (
-                    <tr key={row.rowNumber} className="align-top">
-                      <td className="px-4 py-3 font-mono text-xs text-muted">{row.rowNumber}</td>
-                      <td className="px-4 py-3 font-semibold">{row.lead.leadName}</td>
-                      <td className="px-4 py-3">{row.lead.phone || "Unavailable"}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge>{row.lead.leadTemperature}</Badge>
-                          <Badge>{row.lead.leadStage}</Badge>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">{formatDate(row.lead.firstContactDate)}</td>
-                      <td className="px-4 py-3">{formatDate(row.lead.nextFollowupDate, "No next date")}</td>
-                      <td className="px-4 py-3 text-xs leading-5 text-muted">
-                        {row.warnings.length ? row.warnings.join(" ") : "Ready"}
-                      </td>
-                    </tr>
-                  ))}
+                  {preview.rows.map((row) => {
+                    const match = duplicatePreview?.matchByRow.get(row.rowNumber);
+                    return (
+                      <tr key={row.rowNumber} className="align-top">
+                        <td className="px-4 py-3 font-mono text-xs text-muted">{row.rowNumber}</td>
+                        <td className="px-4 py-3 font-semibold">{row.lead.leadName}</td>
+                        <td className="px-4 py-3">{row.lead.phone || "Unavailable"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge>{row.lead.leadTemperature}</Badge>
+                            <Badge>{row.lead.leadStage}</Badge>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">{formatDate(row.lead.firstContactDate)}</td>
+                        <td className="px-4 py-3">{formatDate(row.lead.nextFollowupDate, "No next date")}</td>
+                        <td className="px-4 py-3">
+                          {match ? (
+                            <div className="space-y-1">
+                              <Badge tone="warm">Update existing</Badge>
+                              <p className="max-w-[220px] text-xs leading-5 text-muted">
+                                {match.leadName} by {match.reason}
+                              </p>
+                            </div>
+                          ) : (
+                            <Badge tone="success">Create new</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs leading-5 text-muted">
+                          {row.warnings.length ? row.warnings.join(" ") : "Ready"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

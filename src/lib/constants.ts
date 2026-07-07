@@ -5,6 +5,7 @@ import type {
   LeadStage,
   LeadTemperature,
   ObjectionReason,
+  PaymentStatus,
   PosterSlotStatus,
   ProjectStatus,
   ProjectType,
@@ -90,6 +91,7 @@ export const leadSourceOptions = [
 
 export const primaryModules = [
   { label: "Dashboard", href: "/dashboard" },
+  { label: "Daily Sales", href: "/daily-sales" },
   { label: "Leads", href: "/leads" },
   { label: "Follow-ups", href: "/follow-ups" },
   { label: "Reports", href: "/reports" },
@@ -101,6 +103,14 @@ export const clientStatusOptions: ClientStatus[] = [
   "Paused",
   "Renewal Due",
   "Closed",
+];
+
+export const paymentStatusOptions: PaymentStatus[] = [
+  "Not Started",
+  "Advance Paid",
+  "Partially Paid",
+  "Paid",
+  "Overdue",
 ];
 
 export const projectTypeOptions: ProjectType[] = [
