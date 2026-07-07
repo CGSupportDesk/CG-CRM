@@ -233,11 +233,10 @@ export interface ImportSummary {
 }
 
 export type WhatsappTemplateKey =
-  | "First Contact"
-  | "Follow-up"
-  | "Details Sent"
-  | "Proposal Follow-up"
-  | "Final Follow-up"
+  | "Send me Details"
+  | "Will think about it"
+  | "Didnt answer the call"
+  | "Seen but no reply"
   | "Custom Message";
 
 export interface SmartLeadSuggestion {

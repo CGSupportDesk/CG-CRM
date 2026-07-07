@@ -388,12 +388,23 @@ function priorityScore(lead: Lead) {
 
 function normalizeTemplate(value: unknown): WhatsappTemplateKey {
   const legacyTemplateMap: Record<string, WhatsappTemplateKey> = {
-    "send details": "Details Sent",
-    "will think about it": "Follow-up",
-    "did not answer": "Follow-up",
-    "seen but no reply": "Follow-up",
-    "sample offer": "Proposal Follow-up",
-    "price objection": "Proposal Follow-up",
+    "send details": "Send me Details",
+    "send me details": "Send me Details",
+    "first contact": "Send me Details",
+    "details sent": "Send me Details",
+    "will think about it": "Will think about it",
+    "follow-up": "Will think about it",
+    "follow up": "Will think about it",
+    "proposal follow-up": "Will think about it",
+    "proposal follow up": "Will think about it",
+    "did not answer": "Didnt answer the call",
+    "didnt answer": "Didnt answer the call",
+    "didnt answer the call": "Didnt answer the call",
+    "seen but no reply": "Seen but no reply",
+    "final follow-up": "Seen but no reply",
+    "final follow up": "Seen but no reply",
+    "sample offer": "Will think about it",
+    "price objection": "Will think about it",
     none: "Custom Message",
   };
   const legacy = legacyTemplateMap[text(value).toLowerCase()];

@@ -3,21 +3,19 @@ import type { Lead, StudioClient, WhatsappTemplateKey } from "./types";
 export const DEFAULT_CLOSING_GAP_WHATSAPP_NUMBER = "919633294791";
 
 export const whatsappTemplateOptions: WhatsappTemplateKey[] = [
-  "First Contact",
-  "Follow-up",
-  "Details Sent",
-  "Proposal Follow-up",
-  "Final Follow-up",
+  "Send me Details",
+  "Will think about it",
+  "Didnt answer the call",
+  "Seen but no reply",
   "Custom Message",
 ];
 
 export const whatsappTemplateContext = `
 30 Poster Package WhatsApp template labels:
-- First Contact: use for a new lead who has not received the first package message.
-- Follow-up: use after a call, missed call, no response, or when the lead needs time.
-- Details Sent: use when sending gallery and 30 Poster Package details.
-- Proposal Follow-up: use after pricing, proposal, or package details have already been shared.
-- Final Follow-up: use when closing the loop after multiple attempts.
+- Send me Details: use when the lead asked for details, package info, or portfolio/gallery.
+- Will think about it: use when the lead needs time, wants to discuss, or is undecided.
+- Didnt answer the call: use when a call did not connect or the lead missed the call.
+- Seen but no reply: use when messages were seen but the lead has not responded.
 - Custom Message: use when a manual message is more appropriate.
 `;
 
@@ -35,16 +33,25 @@ export function getWhatsappRecipientName(recipient: WhatsappRecipient) {
 }
 
 export function getDefaultWhatsappTemplate(recipient?: WhatsappRecipient): WhatsappTemplateKey {
-  if (!recipient || "clientName" in recipient) return "Follow-up";
+  if (!recipient || "clientName" in recipient) return "Will think about it";
 
   const remarks = recipient.remarks.toLowerCase();
-  if (remarks.includes("proposal")) return "Proposal Follow-up";
-  if (remarks.includes("details") || remarks.includes("gallery")) return "Details Sent";
-  if (remarks.includes("tried") || remarks.includes("no response") || remarks.includes("call back")) {
-    return "Follow-up";
+  if (remarks.includes("seen") || remarks.includes("no reply")) return "Seen but no reply";
+  if (
+    remarks.includes("tried") ||
+    remarks.includes("didn't answer") ||
+    remarks.includes("didnt answer") ||
+    remarks.includes("missed") ||
+    remarks.includes("no response")
+  ) {
+    return "Didnt answer the call";
   }
+  if (remarks.includes("think") || remarks.includes("time") || remarks.includes("call back")) {
+    return "Will think about it";
+  }
+  if (remarks.includes("details") || remarks.includes("gallery")) return "Send me Details";
 
-  return recipient.phone ? "First Contact" : "Custom Message";
+  return recipient.phone ? "Send me Details" : "Custom Message";
 }
 
 export function buildWhatsappMessage(
@@ -52,68 +59,62 @@ export function buildWhatsappMessage(
   recipient: WhatsappRecipient,
 ) {
   const name = getWhatsappRecipientName(recipient);
-  const business = "clientName" in recipient
-    ? recipient.clientName
-    : recipient.businessName || recipient.leadName;
-  const businessLine = business ? ` for ${business}` : "";
 
-  if (template === "First Contact") {
+  if (template === "Send me Details") {
     return [
       `Hi ${name}, Naveen here from Closing Gap Studio.`,
       "",
-      "We help businesses stay consistent on social media with the 30 Poster Package.",
+      "As promised - here's a look at what we do:",
+      "👉 cgstudio.theclosinggap.net/gallery",
       "",
       "Quick summary:",
-      "- 30 custom designed posts every month",
-      "- Rs 4,999 only - about Rs 167 per post",
-      "- No follow ups, no chasing - we deliver",
+      "✅ 30 custom designed posts every month",
+      "✅ ₹4,999 only - that's ₹167 per post",
+      "✅ No follow ups, no chasing - we deliver",
       "",
-      "You can see our work here:",
-      "cgstudio.theclosinggap.net/gallery",
+      "We have a few slots open this month. If you'd like to go ahead, we can start this week itself.",
       "",
-      "Would you like me to send the details?",
+      "Just say the word 🙂",
     ].join("\n");
   }
 
-  if (template === "Details Sent") {
-    return [
-      `Hi ${name}, Naveen here from Closing Gap Studio.`,
-      "",
-      "As promised, here is a look at what we do:",
-      "cgstudio.theclosinggap.net/gallery",
-      "",
-      "Quick summary:",
-      "- 30 custom designed posts every month",
-      "- Rs 4,999 only - about Rs 167 per post",
-      "- No follow ups, no chasing - we deliver",
-      "",
-      "We have a few slots open this month. If you would like to go ahead, we can start this week itself.",
-      "",
-      "Just say the word.",
-    ].join("\n");
-  }
-
-  if (template === "Proposal Follow-up") {
+  if (template === "Will think about it") {
     return [
       `Hi ${name}, Naveen here.`,
       "",
-      `Just checking if you had a chance to review the 30 Poster Package${businessLine}.`,
+      "Just following up on our conversation - completely understand you're thinking it over.",
       "",
-      "It is Rs 4,999 for 30 custom posts every month, fully handled by our studio.",
+      "One thing I can do - let me design 2 sample posters for your business, specific to your industry. No cost, no obligation. You see the quality first, then decide.",
       "",
-      "If it helps, I can also share 2-3 sample post ideas for your business before you decide.",
+      "Fair enough? Just confirm your business name and I'll get it done by tomorrow.",
     ].join("\n");
   }
 
-  if (template === "Final Follow-up") {
+  if (template === "Didnt answer the call") {
     return [
-      `Hi ${name}, Naveen here from Closing Gap Studio.`,
+      `Hi ${name}, this is Naveen from Closing Gap Studio. Tried calling - you were probably busy/couldn't connect.`,
       "",
-      "Just closing the loop on the 30 Poster Package.",
+      "We help businesses like yours stay consistent on social media - 30 custom posts every month for ₹4,999.",
       "",
-      "If now is not the right time, no worries at all. If you want to revisit it later, you can message me here anytime.",
+      "Have a look at our work: cgstudio.theclosinggap.net/gallery",
+    ].join("\n");
+  }
+
+  if (template === "Seen but no reply") {
+    return [
+      `Hi ${name} - Naveen here. Noticed you might have seen my last message.`,
       "",
-      "Thanks.",
+      "No pressure at all - just didn't want you to miss this.",
+      "",
+      "30 posts a month, ₹4,999, completely done for you. Your competitors are posting every day - this is how you keep up without the effort.",
+      "",
+      "If you want I can send 2 free sample designs for your business - takes me a day, costs you nothing. Then you decide.",
+      "",
+      "Interested? 🙂",
+      "",
+      "If it looks interesting, I can design 3 free sample posts for your business so you can see exactly what it would look like before deciding anything.",
+      "",
+      "Reply when you get a chance 🙂",
     ].join("\n");
   }
 
@@ -121,13 +122,5 @@ export function buildWhatsappMessage(
     return "";
   }
 
-  return [
-    `Hi ${name}, Naveen here.`,
-    "",
-    "Just following up on our conversation.",
-    "",
-    "One thing I can do: let me design 2 sample posters for your business, specific to your industry. No cost, no obligation. You see the quality first, then decide.",
-    "",
-    "Fair enough? Just confirm your business name and I will get it done.",
-  ].join("\n");
+  return "";
 }
