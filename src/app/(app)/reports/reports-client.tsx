@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Download, IndianRupee, Percent, PhoneCall, Target, TrendingUp } from "lucide-react";
+import { ArrowRight, Download, IndianRupee, MessageCircle, Percent, PhoneCall, Target, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { ReportInsightsPanel } from "@/components/ai-panels";
@@ -11,7 +11,7 @@ import { Badge, Button, EmptyState, FieldLabel, PageHeader, Panel, buttonClasses
 import {
   activeLeads,
   clientStatusChart,
-  dailyCallReport,
+  dailyCommunicationReport,
   designerWorkloadChart,
   followupDueChart,
   getKpis,
@@ -37,7 +37,7 @@ export function ReportsClient() {
   const monthlyRows = monthlyConversionRows(leads);
   const renewals = renewalRows(clients);
   const sampleStats = sampleConversionStats(leads, followups);
-  const callReport = dailyCallReport(followups, activityLogs, callReportDate);
+  const dailyReport = dailyCommunicationReport(followups, activityLogs, callReportDate);
   const revenueByService = active.reduce<Record<string, number>>((acc, lead) => {
     if (!["Lost", "Rejected"].includes(lead.leadStage)) {
       acc[lead.serviceInterest] = (acc[lead.serviceInterest] || 0) + lead.expectedValue;
@@ -55,21 +55,42 @@ export function ReportsClient() {
       { Section: "Samples", Metric: "Samples Won", Value: sampleStats.samplesWon, Extra: "" },
       { Section: "Samples", Metric: "Sample Conversion Rate", Value: `${sampleStats.sampleConversionRate}%`, Extra: "" },
       { Section: "Samples", Metric: "Sample + Follow-up Conversion Rate", Value: `${sampleStats.sampleFollowupConversionRate}%`, Extra: "" },
-      { Section: "Daily Calls", Metric: "Report Date", Value: callReport.date, Extra: "" },
-      { Section: "Daily Calls", Metric: "Total Calls", Value: callReport.totalCalls, Extra: "" },
-      { Section: "Daily Calls", Metric: "Top Call Hour", Value: callReport.topHour, Extra: "" },
-      { Section: "Daily Calls", Metric: "Data Source", Value: callReport.source, Extra: "" },
-      ...Object.entries(callReport.outcomeCounts).map(([outcome, count]) => ({
+      { Section: "Daily Report", Metric: "Report Date", Value: dailyReport.date, Extra: "" },
+      { Section: "Daily Report", Metric: "Total Calls", Value: dailyReport.totalCalls, Extra: "" },
+      { Section: "Daily Report", Metric: "WhatsApp / Messages", Value: dailyReport.totalMessages, Extra: "" },
+      { Section: "Daily Report", Metric: "Total Activities", Value: dailyReport.totalActivities, Extra: "" },
+      { Section: "Daily Report", Metric: "Top Activity Hour", Value: dailyReport.topActivityHour, Extra: "" },
+      { Section: "Daily Report", Metric: "Call Source", Value: dailyReport.source, Extra: "" },
+      { Section: "Daily Report", Metric: "Message Source", Value: dailyReport.messageSource, Extra: "" },
+      ...Object.entries(dailyReport.outcomeCounts).map(([outcome, count]) => ({
         Section: "Daily Call Outcomes",
         Metric: outcome,
         Value: count,
-        Extra: callReport.date,
+        Extra: dailyReport.date,
       })),
-      ...Object.entries(callReport.hourlyCalls).map(([hour, count]) => ({
+      ...Object.entries(dailyReport.messageCounts).map(([message, count]) => ({
+        Section: "Daily WhatsApp / Messages",
+        Metric: message,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.hourlyCalls).map(([hour, count]) => ({
         Section: "Daily Call Hours",
         Metric: hour,
         Value: count,
-        Extra: callReport.date,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.hourlyMessages).map(([hour, count]) => ({
+        Section: "Daily Message Hours",
+        Metric: hour,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.hourlyActivity).map(([hour, count]) => ({
+        Section: "Daily Activity Hours",
+        Metric: hour,
+        Value: count,
+        Extra: dailyReport.date,
       })),
       ...monthlyRows.map((row) => ({
         Section: "Monthly Conversion",
@@ -159,9 +180,9 @@ export function ReportsClient() {
       <Panel className="space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Daily call report</h2>
+            <h2 className="text-xl font-semibold">Daily sales report</h2>
             <p className="mt-1 text-sm text-muted">
-              Call volume split by outcome and hour, using the activity log timestamp for the day.
+              Calls and WhatsApp/message activity for the selected day, using activity log timestamps.
             </p>
           </div>
           <FieldLabel label="Report Date">
@@ -173,31 +194,59 @@ export function ReportsClient() {
             />
           </FieldLabel>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-border bg-surface-soft p-4">
             <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Total Calls</p>
-            <p className="mt-2 font-mono text-3xl font-bold">{callReport.totalCalls}</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.totalCalls}</p>
           </div>
           <div className="rounded-2xl border border-border bg-surface-soft p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Most Calls Made</p>
-            <p className="mt-2 font-mono text-3xl font-bold">{callReport.topHour}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">WhatsApp / Messages</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.totalMessages}</p>
           </div>
           <div className="rounded-2xl border border-border bg-surface-soft p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Data Source</p>
-            <p className="mt-2 text-xl font-bold">{callReport.source}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Busiest Call Hour</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.topHour}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Busiest Message Hour</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.topMessageHour}</p>
           </div>
         </div>
         <div className="grid gap-5 xl:grid-cols-2">
           <div>
             <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Call outcomes</h3>
             <div className="mt-4">
-              <BarList data={callReport.outcomeCounts} />
+              <BarList data={dailyReport.outcomeCounts} />
             </div>
           </div>
           <div>
-            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Calls by hour from log</h3>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">WhatsApp / message report</h3>
             <div className="mt-4">
-              <BarList data={callReport.hourlyCalls} compact />
+              <BarList data={dailyReport.messageCounts} />
+            </div>
+          </div>
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.08em] text-muted">
+              <PhoneCall className="h-4 w-4" />
+              Calls by hour
+            </h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.hourlyCalls} compact />
+            </div>
+          </div>
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.08em] text-muted">
+              <MessageCircle className="h-4 w-4" />
+              Messages by hour
+            </h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.hourlyMessages} compact />
+            </div>
+          </div>
+          <div className="xl:col-span-2">
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Combined calls and messages by hour</h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.hourlyActivity} compact />
             </div>
           </div>
         </div>

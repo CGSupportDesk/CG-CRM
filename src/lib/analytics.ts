@@ -152,16 +152,46 @@ export function dailyCallReport(
   activityLogs: ActivityLog[] = [],
   date = todayIso(),
 ) {
+  return dailyCommunicationReport(followups, activityLogs, date);
+}
+
+export function dailyCommunicationReport(
+  followups: Followup[],
+  activityLogs: ActivityLog[] = [],
+  date = todayIso(),
+) {
   const hourlyCalls = emptyHourlyBuckets();
+  const hourlyMessages = emptyHourlyBuckets();
+  const hourlyActivity = emptyHourlyBuckets();
   const outcomeCounts: Record<string, number> = {};
-  const callLogs = activityLogs
+  const messageCounts: Record<string, number> = {};
+  const parsedFollowupLogs = activityLogs
     .filter((log) => log.action === "Follow-up added")
-    .map(parseFollowupLog)
+    .map(parseFollowupLog);
+  const callLogs = parsedFollowupLogs
     .filter(
       (log) =>
         log.type === "Call" &&
         getLocalDateFromValue(log.createdAt) === date,
     );
+  const messageFollowupLogs = parsedFollowupLogs.filter(
+    (log) =>
+      isMessageFollowupType(log.type) &&
+      getLocalDateFromValue(log.createdAt) === date,
+  );
+  const whatsappOpenLogs = activityLogs
+    .filter(
+      (log) =>
+        log.action === "WhatsApp opened" &&
+        getLocalDateFromValue(log.createdAt) === date,
+    )
+    .map((log) => ({
+      id: log.id,
+      type: "WhatsApp",
+      outcome: log.newValue || "Custom Message",
+      createdAt: log.createdAt,
+      source: "WhatsApp opened",
+    }));
 
   const fallbackCalls = followups.filter(
     (followup) =>
@@ -176,23 +206,63 @@ export function dailyCallReport(
         outcome: followup.outcome,
         createdAt: followup.markedAt || followup.createdAt || followup.followupDate,
       }));
+  const fallbackMessageFollowups = followups.filter(
+    (followup) =>
+      isMessageFollowupType(followup.followupType) &&
+      getLocalDateFromValue(followup.markedAt || followup.createdAt || followup.followupDate) === date,
+  );
+  const loggedMessages = messageFollowupLogs.length
+    ? messageFollowupLogs.map((log) => ({
+        ...log,
+        source: "Follow-up logged",
+      }))
+    : fallbackMessageFollowups.map((followup) => ({
+        id: followup.id,
+        type: followup.followupType,
+        outcome: followup.outcome,
+        createdAt: followup.markedAt || followup.createdAt || followup.followupDate,
+        source: "Follow-up records",
+      }));
+  const messages = [...whatsappOpenLogs, ...loggedMessages];
 
   calls.forEach((call) => {
     const hour = getLocalHourLabel(call.createdAt);
     hourlyCalls[hour] = (hourlyCalls[hour] || 0) + 1;
+    hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
     outcomeCounts[call.outcome] = (outcomeCounts[call.outcome] || 0) + 1;
   });
 
+  messages.forEach((message) => {
+    const hour = getLocalHourLabel(message.createdAt);
+    hourlyMessages[hour] = (hourlyMessages[hour] || 0) + 1;
+    hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
+    const label = message.source === "WhatsApp opened"
+      ? `Template: ${message.outcome}`
+      : `${message.type}: ${message.outcome}`;
+    messageCounts[label] = (messageCounts[label] || 0) + 1;
+  });
+
   const topHourEntry = Object.entries(hourlyCalls).sort((a, b) => b[1] - a[1])[0];
+  const topMessageHourEntry = Object.entries(hourlyMessages).sort((a, b) => b[1] - a[1])[0];
+  const topActivityHourEntry = Object.entries(hourlyActivity).sort((a, b) => b[1] - a[1])[0];
 
   return {
     date,
     totalCalls: calls.length,
+    totalMessages: messages.length,
+    totalActivities: calls.length + messages.length,
     outcomeCounts,
+    messageCounts,
     hourlyCalls,
+    hourlyMessages,
+    hourlyActivity,
     topHour: topHourEntry && topHourEntry[1] > 0 ? topHourEntry[0] : "No calls",
+    topMessageHour: topMessageHourEntry && topMessageHourEntry[1] > 0 ? topMessageHourEntry[0] : "No messages",
+    topActivityHour: topActivityHourEntry && topActivityHourEntry[1] > 0 ? topActivityHourEntry[0] : "No activity",
     source: callLogs.length ? "Activity logs" : "Follow-up records",
+    messageSource: messageFollowupLogs.length || whatsappOpenLogs.length ? "Activity logs" : "Follow-up records",
     calls,
+    messages,
   };
 }
 
@@ -345,6 +415,10 @@ function parseFollowupLog(log: ActivityLog) {
     outcome,
     createdAt: log.createdAt,
   };
+}
+
+function isMessageFollowupType(type: string) {
+  return type === "WhatsApp" || type === "Instagram DM";
 }
 
 function escapeRegExp(value: string) {

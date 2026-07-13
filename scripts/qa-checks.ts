@@ -20,7 +20,7 @@ import {
   encodeWhatsAppMessage,
   formatPhoneForWhatsApp,
 } from "../src/lib/whatsapp";
-import { dailyActivityLogReport, dailyCallReport, sampleConversionStats } from "../src/lib/analytics";
+import { dailyActivityLogReport, dailyCommunicationReport, sampleConversionStats } from "../src/lib/analytics";
 import { rowsToCsv } from "../src/lib/export-utils";
 import type { ActivityLog, Followup, ImportPreviewRow, Lead, LeadDraft } from "../src/lib/types";
 
@@ -157,7 +157,7 @@ assert.equal(sampleStats.sampleConversionRate, 50);
 assert.equal(sampleStats.followedUp, 3);
 assert.equal(sampleStats.followupConversionRate, 67);
 
-const callReport = dailyCallReport(
+const dailyReport = dailyCommunicationReport(
   [
     followup({ followupType: "Call", outcome: "No Response", markedAt: "2026-07-14T04:15:00.000Z" }),
     followup({ followupType: "Call", outcome: "Interested", markedAt: "2026-07-14T04:25:00.000Z" }),
@@ -167,15 +167,25 @@ const callReport = dailyCallReport(
     activityLog({ newValue: "Call - No Response - actual 2026-07-14", createdAt: "2026-07-14T05:10:00.000Z" }),
     activityLog({ newValue: "Call - Interested - actual 2026-07-14", createdAt: "2026-07-14T05:20:00.000Z" }),
     activityLog({ newValue: "WhatsApp - Details Sent - actual 2026-07-14", createdAt: "2026-07-14T04:25:00.000Z" }),
+    activityLog({ action: "WhatsApp opened", newValue: "Send me Details", createdAt: "2026-07-14T06:05:00.000Z" }),
   ],
   "2026-07-14",
 );
-assert.equal(callReport.totalCalls, 2);
-assert.equal(callReport.outcomeCounts["No Response"], 1);
-assert.equal(callReport.outcomeCounts.Interested, 1);
-assert.equal(callReport.hourlyCalls["10:00"], 2);
-assert.equal(callReport.topHour, "10:00");
-assert.equal(callReport.source, "Activity logs");
+assert.equal(dailyReport.totalCalls, 2);
+assert.equal(dailyReport.totalMessages, 2);
+assert.equal(dailyReport.totalActivities, 4);
+assert.equal(dailyReport.outcomeCounts["No Response"], 1);
+assert.equal(dailyReport.outcomeCounts.Interested, 1);
+assert.equal(dailyReport.messageCounts["WhatsApp: Details Sent"], 1);
+assert.equal(dailyReport.messageCounts["Template: Send me Details"], 1);
+assert.equal(dailyReport.hourlyCalls["10:00"], 2);
+assert.equal(dailyReport.hourlyMessages["09:00"], 1);
+assert.equal(dailyReport.hourlyMessages["11:00"], 1);
+assert.equal(dailyReport.hourlyActivity["10:00"], 2);
+assert.equal(dailyReport.topHour, "10:00");
+assert.equal(dailyReport.topMessageHour, "09:00");
+assert.equal(dailyReport.source, "Activity logs");
+assert.equal(dailyReport.messageSource, "Activity logs");
 
 const activityReport = dailyActivityLogReport(
   [
