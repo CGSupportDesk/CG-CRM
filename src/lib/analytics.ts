@@ -1,4 +1,5 @@
 import type {
+  ActivityLog,
   Followup,
   Lead,
   LeadStage,
@@ -7,6 +8,7 @@ import type {
   StudioClient,
   StudioProject,
 } from "./types";
+import { followupOutcomeOptions, followupTypeOptions } from "./constants";
 import { isOverdue, isToday, offsetDate, startOfWeekIso, todayIso, toLocalIsoDate } from "./utils";
 
 const terminalLeadStages: LeadStage[] = ["Won", "Lost", "Rejected"];
@@ -145,19 +147,40 @@ export function sampleConversionStats(leads: Lead[], followups: Followup[]) {
   };
 }
 
-export function dailyCallReport(followups: Followup[], date = todayIso()) {
+export function dailyCallReport(
+  followups: Followup[],
+  activityLogs: ActivityLog[] = [],
+  date = todayIso(),
+) {
   const hourlyCalls = emptyHourlyBuckets();
   const outcomeCounts: Record<string, number> = {};
-  const calls = followups.filter(
+  const callLogs = activityLogs
+    .filter((log) => log.action === "Follow-up added")
+    .map(parseFollowupLog)
+    .filter(
+      (log) =>
+        log.type === "Call" &&
+        getLocalDateFromValue(log.createdAt) === date,
+    );
+
+  const fallbackCalls = followups.filter(
     (followup) =>
       followup.followupType === "Call" &&
       getLocalDateFromValue(followup.markedAt || followup.createdAt || followup.followupDate) === date,
   );
+  const calls = callLogs.length
+    ? callLogs
+    : fallbackCalls.map((followup) => ({
+        id: followup.id,
+        type: followup.followupType,
+        outcome: followup.outcome,
+        createdAt: followup.markedAt || followup.createdAt || followup.followupDate,
+      }));
 
-  calls.forEach((followup) => {
-    const hour = getLocalHourLabel(followup.markedAt || followup.createdAt || followup.followupDate);
+  calls.forEach((call) => {
+    const hour = getLocalHourLabel(call.createdAt);
     hourlyCalls[hour] = (hourlyCalls[hour] || 0) + 1;
-    outcomeCounts[followup.outcome] = (outcomeCounts[followup.outcome] || 0) + 1;
+    outcomeCounts[call.outcome] = (outcomeCounts[call.outcome] || 0) + 1;
   });
 
   const topHourEntry = Object.entries(hourlyCalls).sort((a, b) => b[1] - a[1])[0];
@@ -168,7 +191,31 @@ export function dailyCallReport(followups: Followup[], date = todayIso()) {
     outcomeCounts,
     hourlyCalls,
     topHour: topHourEntry && topHourEntry[1] > 0 ? topHourEntry[0] : "No calls",
+    source: callLogs.length ? "Activity logs" : "Follow-up records",
     calls,
+  };
+}
+
+export function dailyActivityLogReport(activityLogs: ActivityLog[], date = todayIso()) {
+  const hourlyLogs = emptyHourlyBuckets();
+  const actionCounts: Record<string, number> = {};
+  const logs = activityLogs.filter((log) => getLocalDateFromValue(log.createdAt) === date);
+
+  logs.forEach((log) => {
+    const hour = getLocalHourLabel(log.createdAt);
+    hourlyLogs[hour] = (hourlyLogs[hour] || 0) + 1;
+    actionCounts[log.action] = (actionCounts[log.action] || 0) + 1;
+  });
+
+  const topHourEntry = Object.entries(hourlyLogs).sort((a, b) => b[1] - a[1])[0];
+
+  return {
+    date,
+    totalLogs: logs.length,
+    actionCounts,
+    hourlyLogs,
+    topHour: topHourEntry && topHourEntry[1] > 0 ? topHourEntry[0] : "No activity",
+    logs,
   };
 }
 
@@ -251,7 +298,7 @@ function percentage(value: number, total: number) {
 }
 
 function emptyHourlyBuckets() {
-  return Array.from({ length: 12 }, (_, index) => `${String(index + 9).padStart(2, "0")}:00`).reduce<
+  return Array.from({ length: 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`).reduce<
     Record<string, number>
   >((acc, hour) => {
     acc[hour] = 0;
@@ -281,4 +328,25 @@ function getLocalHourLabel(value: string) {
   }).formatToParts(date);
   const hour = parts.find((part) => part.type === "hour")?.value || "00";
   return `${hour}:00`;
+}
+
+function parseFollowupLog(log: ActivityLog) {
+  const value = log.newValue.trim();
+  const type = followupTypeOptions.find((option) => value.startsWith(`${option} - `)) || "Call";
+  const outcomeText = type === "Call" && !value.startsWith("Call - ")
+    ? value
+    : value.replace(new RegExp(`^${escapeRegExp(type)}\\s+-\\s+`), "");
+  const outcome =
+    followupOutcomeOptions.find((option) => outcomeText.startsWith(option)) || "Call Back Later";
+
+  return {
+    id: log.id,
+    type,
+    outcome,
+    createdAt: log.createdAt,
+  };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

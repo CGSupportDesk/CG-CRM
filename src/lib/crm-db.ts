@@ -340,7 +340,7 @@ export async function addFollowupRecord(draft: FollowupDraft) {
       draft.leadId,
       "Follow-up added",
       scheduledFollowupDate,
-      `${draft.outcome} - actual ${draft.followupDate} - marked ${markedAt.slice(0, 10)} - ${formatFollowupDelay(getWorkingDayDelta(scheduledFollowupDate, draft.followupDate))}`,
+      `${draft.followupType} - ${draft.outcome} - actual ${draft.followupDate} - marked ${markedAt.slice(0, 10)} - ${formatFollowupDelay(getWorkingDayDelta(scheduledFollowupDate, draft.followupDate))}`,
     ),
     ...(lead && lead.leadStage !== inferredStage
       ? [buildLog(draft.leadId, "Stage updated", lead.leadStage, inferredStage)]

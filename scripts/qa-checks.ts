@@ -20,9 +20,9 @@ import {
   encodeWhatsAppMessage,
   formatPhoneForWhatsApp,
 } from "../src/lib/whatsapp";
-import { dailyCallReport, sampleConversionStats } from "../src/lib/analytics";
+import { dailyActivityLogReport, dailyCallReport, sampleConversionStats } from "../src/lib/analytics";
 import { rowsToCsv } from "../src/lib/export-utils";
-import type { Followup, ImportPreviewRow, Lead, LeadDraft } from "../src/lib/types";
+import type { ActivityLog, Followup, ImportPreviewRow, Lead, LeadDraft } from "../src/lib/types";
 
 assert.deepEqual(buildFollowupSchedule("2026-07-06"), [
   "2026-07-07",
@@ -163,13 +163,32 @@ const callReport = dailyCallReport(
     followup({ followupType: "Call", outcome: "Interested", markedAt: "2026-07-14T04:25:00.000Z" }),
     followup({ followupType: "WhatsApp", outcome: "Details Sent", markedAt: "2026-07-14T04:25:00.000Z" }),
   ],
+  [
+    activityLog({ newValue: "Call - No Response - actual 2026-07-14", createdAt: "2026-07-14T05:10:00.000Z" }),
+    activityLog({ newValue: "Call - Interested - actual 2026-07-14", createdAt: "2026-07-14T05:20:00.000Z" }),
+    activityLog({ newValue: "WhatsApp - Details Sent - actual 2026-07-14", createdAt: "2026-07-14T04:25:00.000Z" }),
+  ],
   "2026-07-14",
 );
 assert.equal(callReport.totalCalls, 2);
 assert.equal(callReport.outcomeCounts["No Response"], 1);
 assert.equal(callReport.outcomeCounts.Interested, 1);
-assert.equal(callReport.hourlyCalls["09:00"], 2);
-assert.equal(callReport.topHour, "09:00");
+assert.equal(callReport.hourlyCalls["10:00"], 2);
+assert.equal(callReport.topHour, "10:00");
+assert.equal(callReport.source, "Activity logs");
+
+const activityReport = dailyActivityLogReport(
+  [
+    activityLog({ action: "Follow-up added", createdAt: "2026-07-14T05:10:00.000Z" }),
+    activityLog({ action: "WhatsApp opened", createdAt: "2026-07-14T05:20:00.000Z" }),
+    activityLog({ action: "Lead created", createdAt: "2026-07-13T05:20:00.000Z" }),
+  ],
+  "2026-07-14",
+);
+assert.equal(activityReport.totalLogs, 2);
+assert.equal(activityReport.hourlyLogs["10:00"], 2);
+assert.equal(activityReport.actionCounts["Follow-up added"], 1);
+assert.equal(activityReport.actionCounts["WhatsApp opened"], 1);
 
 assert.equal(
   rowsToCsv([{ Name: "A, B", Remarks: "Line 1\nLine 2", Count: 2 }]),
@@ -239,5 +258,18 @@ function followup(followupDraft: Partial<Followup> = {}): Followup {
     markedAt: "2026-07-14T04:30:00.000Z",
     createdAt: "2026-07-14T04:30:00.000Z",
     ...followupDraft,
+  };
+}
+
+function activityLog(log: Partial<ActivityLog> = {}): ActivityLog {
+  return {
+    id: "log_test",
+    leadId: "lead_test",
+    action: "Follow-up added",
+    oldValue: "",
+    newValue: "Call - Call Back Later - actual 2026-07-14",
+    createdBy: "captain",
+    createdAt: "2026-07-14T04:30:00.000Z",
+    ...log,
   };
 }

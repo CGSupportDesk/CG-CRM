@@ -29,7 +29,7 @@ import { exportRowsToCsv } from "@/lib/export-utils";
 import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
 
 export function ReportsClient() {
-  const { leads, followups, clients, projects, posterSlots, loading } = useCRM();
+  const { leads, followups, activityLogs, clients, projects, posterSlots, loading } = useCRM();
   const [callReportDate, setCallReportDate] = useState(todayIso());
   const active = activeLeads(leads);
   const kpis = getKpis(leads);
@@ -37,7 +37,7 @@ export function ReportsClient() {
   const monthlyRows = monthlyConversionRows(leads);
   const renewals = renewalRows(clients);
   const sampleStats = sampleConversionStats(leads, followups);
-  const callReport = dailyCallReport(followups, callReportDate);
+  const callReport = dailyCallReport(followups, activityLogs, callReportDate);
   const revenueByService = active.reduce<Record<string, number>>((acc, lead) => {
     if (!["Lost", "Rejected"].includes(lead.leadStage)) {
       acc[lead.serviceInterest] = (acc[lead.serviceInterest] || 0) + lead.expectedValue;
@@ -58,6 +58,7 @@ export function ReportsClient() {
       { Section: "Daily Calls", Metric: "Report Date", Value: callReport.date, Extra: "" },
       { Section: "Daily Calls", Metric: "Total Calls", Value: callReport.totalCalls, Extra: "" },
       { Section: "Daily Calls", Metric: "Top Call Hour", Value: callReport.topHour, Extra: "" },
+      { Section: "Daily Calls", Metric: "Data Source", Value: callReport.source, Extra: "" },
       ...Object.entries(callReport.outcomeCounts).map(([outcome, count]) => ({
         Section: "Daily Call Outcomes",
         Metric: outcome,
@@ -160,7 +161,7 @@ export function ReportsClient() {
           <div>
             <h2 className="text-xl font-semibold">Daily call report</h2>
             <p className="mt-1 text-sm text-muted">
-              Call volume split by outcome and hour, based on the marked time for each follow-up.
+              Call volume split by outcome and hour, using the activity log timestamp for the day.
             </p>
           </div>
           <FieldLabel label="Report Date">
@@ -182,8 +183,8 @@ export function ReportsClient() {
             <p className="mt-2 font-mono text-3xl font-bold">{callReport.topHour}</p>
           </div>
           <div className="rounded-2xl border border-border bg-surface-soft p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Outcomes Tracked</p>
-            <p className="mt-2 font-mono text-3xl font-bold">{Object.keys(callReport.outcomeCounts).length}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Data Source</p>
+            <p className="mt-2 text-xl font-bold">{callReport.source}</p>
           </div>
         </div>
         <div className="grid gap-5 xl:grid-cols-2">
@@ -194,7 +195,7 @@ export function ReportsClient() {
             </div>
           </div>
           <div>
-            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Calls by hour</h3>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Calls by hour from log</h3>
             <div className="mt-4">
               <BarList data={callReport.hourlyCalls} compact />
             </div>

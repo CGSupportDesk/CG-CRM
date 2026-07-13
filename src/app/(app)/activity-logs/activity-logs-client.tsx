@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { Download, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { BarList } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, PageHeader, Panel, inputClasses } from "@/components/ui";
+import { dailyActivityLogReport } from "@/lib/analytics";
 import { exportRowsToCsv } from "@/lib/export-utils";
 import { formatDateTime, getDisplayName, todayIso, toLocalIsoDate } from "@/lib/utils";
 
@@ -14,10 +16,15 @@ export function ActivityLogsClient() {
   const [action, setAction] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [chartDate, setChartDate] = useState(todayIso());
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const actions = useMemo(
     () => Array.from(new Set(activityLogs.map((log) => log.action).filter(Boolean))).sort(),
     [activityLogs],
+  );
+  const dailyLogReport = useMemo(
+    () => dailyActivityLogReport(activityLogs, chartDate),
+    [activityLogs, chartDate],
   );
 
   const filteredLogs = useMemo(() => {
@@ -79,6 +86,55 @@ export function ActivityLogsClient() {
           </Button>
         }
       />
+
+      <Panel className="space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Hourly activity chart</h2>
+            <p className="mt-1 text-sm text-muted">
+              Work distribution for the selected day, calculated from activity log timestamps.
+            </p>
+          </div>
+          <FieldLabel label="Chart Date">
+            <input
+              className={inputClasses}
+              type="date"
+              value={chartDate}
+              onChange={(event) => setChartDate(event.target.value)}
+            />
+          </FieldLabel>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Total Logs</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyLogReport.totalLogs}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Busiest Hour</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyLogReport.topHour}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Action Types</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{Object.keys(dailyLogReport.actionCounts).length}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Logs by hour</h3>
+            <div className="mt-4">
+              <BarList data={dailyLogReport.hourlyLogs} compact />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Logs by action</h3>
+            <div className="mt-4">
+              <BarList data={dailyLogReport.actionCounts} />
+            </div>
+          </div>
+        </div>
+      </Panel>
 
       <Panel className="space-y-5">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.3fr_1fr_0.8fr_0.8fr]">
