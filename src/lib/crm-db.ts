@@ -31,7 +31,7 @@ import type {
   StudioSetting,
   StudioSettingDraft,
 } from "@/lib/types";
-import { createId, dateOnlyText, offsetDate, todayIso } from "@/lib/utils";
+import { createId, dateOnlyText, offsetDate, todayIso, toLocalIsoDate } from "@/lib/utils";
 
 type SqlClient = ReturnType<typeof neon>;
 
@@ -74,10 +74,16 @@ export async function addLeadRecord(leadDraft: LeadDraft) {
   await ensureCrmSchema();
 
   const now = new Date().toISOString();
+  const id = createId("lead");
   const lead: Lead = applyLeadSchedule(
     normalizeLeadForStorage({
       ...leadDraft,
-      id: createId("lead"),
+      id,
+      leadCode: leadDraft.leadCode || createLeadCode(id, now),
+      samplePosterSent: Boolean(leadDraft.samplePosterSent),
+      samplePosterSentAt: leadDraft.samplePosterSent
+        ? leadDraft.samplePosterSentAt || now
+        : "",
       isArchived: false,
       createdAt: now,
       updatedAt: now,
@@ -402,10 +408,14 @@ export async function importLegacyRowsRecord(rows: ImportPreviewRow[]): Promise<
     const existingLead = duplicate
       ? matchingPool.find((lead) => lead.id === duplicate.leadId) || null
       : null;
+    const leadId = existingLead?.id || createId("lead");
     const baseLead = normalizeLeadForStorage(
       {
         ...row.lead,
-        id: existingLead?.id || createId("lead"),
+        id: leadId,
+        leadCode: existingLead?.leadCode || row.lead.leadCode || createLeadCode(leadId, now),
+        samplePosterSent: Boolean(existingLead?.samplePosterSent || row.lead.samplePosterSent),
+        samplePosterSentAt: existingLead?.samplePosterSentAt || row.lead.samplePosterSentAt || "",
         isArchived: existingLead?.isArchived || false,
         createdAt: existingLead?.createdAt || now,
         updatedAt: now,
@@ -485,6 +495,9 @@ function mergeImportedLead(existing: Lead, imported: Lead, now: string): Lead {
       remarks: preferImported(imported.remarks, existing.remarks),
       assignedTo: preferImported(imported.assignedTo, existing.assignedTo),
       id: existing.id,
+      leadCode: existing.leadCode || imported.leadCode,
+      samplePosterSent: existing.samplePosterSent || imported.samplePosterSent,
+      samplePosterSentAt: existing.samplePosterSentAt || imported.samplePosterSentAt,
       isArchived: existing.isArchived,
       createdAt: existing.createdAt,
       updatedAt: now,
@@ -520,6 +533,7 @@ async function createSchema() {
   await sql`
     create table if not exists leads (
       id text primary key,
+      lead_code text not null default '',
       lead_url text not null default '',
       lead_name text not null default '',
       business_name text not null default '',
@@ -538,13 +552,29 @@ async function createSchema() {
       next_followup_date date,
       remarks text not null default '',
       assigned_to text not null default 'Naveen',
+      sample_poster_sent boolean not null default false,
+      sample_poster_sent_at timestamptz,
       is_archived boolean not null default false,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
   `;
 
+  await sql`alter table leads add column if not exists lead_code text not null default ''`;
+  await sql`alter table leads add column if not exists sample_poster_sent boolean not null default false`;
+  await sql`alter table leads add column if not exists sample_poster_sent_at timestamptz`;
   await sql`alter table leads alter column assigned_to set default 'Naveen'`;
+  await sql`
+    update leads
+    set lead_code = concat(
+      'GE-',
+      to_char(created_at at time zone 'Asia/Kolkata', 'YYMMDD'),
+      '-',
+      upper(right(regexp_replace(id, '[^A-Za-z0-9]', '', 'g'), 6))
+    )
+    where coalesce(lead_code, '') = ''
+  `;
+  await sql`create unique index if not exists leads_lead_code_uidx on leads (lead_code) where lead_code <> ''`;
 
   await sql`
     create table if not exists followups (
@@ -659,6 +689,7 @@ async function createSchema() {
   `;
 
   await sql`create index if not exists leads_stage_idx on leads (lead_stage)`;
+  await sql`create index if not exists leads_lead_code_idx on leads (lead_code)`;
   await sql`create index if not exists leads_temperature_idx on leads (lead_temperature)`;
   await sql`create index if not exists leads_next_followup_idx on leads (next_followup_date)`;
   await sql`create index if not exists followups_lead_date_idx on followups (lead_id, followup_date desc)`;
@@ -1026,16 +1057,18 @@ async function insertLead(lead: Lead) {
   const normalizedLead = normalizeLeadForStorage(lead);
   await sql`
     insert into leads (
-      id, lead_url, lead_name, business_name, contact_person, phone, email, industry, location,
+      id, lead_code, lead_url, lead_name, business_name, contact_person, phone, email, industry, location,
       source, lead_temperature, lead_stage, service_interest, expected_value, objection_reason,
-      first_contact_date, next_followup_date, remarks, assigned_to, is_archived, created_at, updated_at
+      first_contact_date, next_followup_date, remarks, assigned_to, sample_poster_sent,
+      sample_poster_sent_at, is_archived, created_at, updated_at
     )
     values (
-      ${normalizedLead.id}, ${normalizedLead.leadUrl}, ${normalizedLead.leadName}, ${normalizedLead.businessName}, ${normalizedLead.contactPerson},
+      ${normalizedLead.id}, ${normalizedLead.leadCode || createLeadCode(normalizedLead.id, normalizedLead.createdAt)}, ${normalizedLead.leadUrl}, ${normalizedLead.leadName}, ${normalizedLead.businessName}, ${normalizedLead.contactPerson},
       ${normalizedLead.phone}, ${normalizedLead.email}, ${normalizedLead.industry}, ${normalizedLead.location}, ${normalizedLead.source},
       ${normalizedLead.leadTemperature}, ${normalizedLead.leadStage}, ${normalizedLead.serviceInterest}, ${normalizedLead.expectedValue},
       ${normalizedLead.objectionReason}, ${dateOrNull(normalizedLead.firstContactDate)}, ${dateOrNull(normalizedLead.nextFollowupDate)},
-      ${normalizedLead.remarks}, ${normalizedLead.assignedTo}, ${normalizedLead.isArchived}, ${normalizedLead.createdAt}, ${normalizedLead.updatedAt}
+      ${normalizedLead.remarks}, ${normalizedLead.assignedTo}, ${normalizedLead.samplePosterSent},
+      ${dateOrNull(normalizedLead.samplePosterSentAt)}, ${normalizedLead.isArchived}, ${normalizedLead.createdAt}, ${normalizedLead.updatedAt}
     )
   `;
 }
@@ -1049,12 +1082,14 @@ async function insertLeads(leads: Lead[]) {
 
   await sql`
     insert into leads (
-      id, lead_url, lead_name, business_name, contact_person, phone, email, industry, location,
+      id, lead_code, lead_url, lead_name, business_name, contact_person, phone, email, industry, location,
       source, lead_temperature, lead_stage, service_interest, expected_value, objection_reason,
-      first_contact_date, next_followup_date, remarks, assigned_to, is_archived, created_at, updated_at
+      first_contact_date, next_followup_date, remarks, assigned_to, sample_poster_sent,
+      sample_poster_sent_at, is_archived, created_at, updated_at
     )
     select
       x."id",
+      coalesce(nullif(x."leadCode", ''), concat('GE-', to_char(coalesce(nullif(x."createdAt", '')::timestamptz, now()) at time zone 'Asia/Kolkata', 'YYMMDD'), '-', upper(right(regexp_replace(x."id", '[^A-Za-z0-9]', '', 'g'), 6)))),
       coalesce(x."leadUrl", ''),
       coalesce(x."leadName", ''),
       coalesce(x."businessName", ''),
@@ -1073,11 +1108,14 @@ async function insertLeads(leads: Lead[]) {
       nullif(x."nextFollowupDate", '')::date,
       coalesce(x."remarks", ''),
       coalesce(x."assignedTo", ${DEFAULT_ASSIGNEE}),
+      coalesce(x."samplePosterSent", false),
+      nullif(x."samplePosterSentAt", '')::timestamptz,
       coalesce(x."isArchived", false),
       coalesce(nullif(x."createdAt", '')::timestamptz, now()),
       coalesce(nullif(x."updatedAt", '')::timestamptz, now())
     from jsonb_to_recordset(${JSON.stringify(normalizedLeads)}::jsonb) as x(
       "id" text,
+      "leadCode" text,
       "leadUrl" text,
       "leadName" text,
       "businessName" text,
@@ -1096,6 +1134,8 @@ async function insertLeads(leads: Lead[]) {
       "nextFollowupDate" text,
       "remarks" text,
       "assignedTo" text,
+      "samplePosterSent" boolean,
+      "samplePosterSentAt" text,
       "isArchived" boolean,
       "createdAt" text,
       "updatedAt" text
@@ -1112,6 +1152,7 @@ async function updateLead(lead: Lead) {
     update leads
     set
       lead_url = ${normalizedLead.leadUrl},
+      lead_code = ${normalizedLead.leadCode || createLeadCode(normalizedLead.id, normalizedLead.createdAt)},
       lead_name = ${normalizedLead.leadName},
       business_name = ${normalizedLead.businessName},
       contact_person = ${normalizedLead.contactPerson},
@@ -1129,6 +1170,8 @@ async function updateLead(lead: Lead) {
       next_followup_date = ${dateOrNull(normalizedLead.nextFollowupDate)},
       remarks = ${normalizedLead.remarks},
       assigned_to = ${normalizedLead.assignedTo},
+      sample_poster_sent = ${normalizedLead.samplePosterSent},
+      sample_poster_sent_at = ${dateOrNull(normalizedLead.samplePosterSentAt)},
       is_archived = ${normalizedLead.isArchived},
       updated_at = ${normalizedLead.updatedAt}
     where id = ${normalizedLead.id}
@@ -1417,6 +1460,16 @@ function buildLog(leadId: string, action: string, oldValue: string, newValue: st
   };
 }
 
+function createLeadCode(id: string, createdAt: string) {
+  const date = new Date(createdAt);
+  const datePart = Number.isNaN(date.getTime())
+    ? todayIso().slice(2).replace(/-/g, "")
+    : toLocalIsoDate(date).slice(2).replace(/-/g, "");
+  const suffix = id.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "LEAD";
+
+  return `GE-${datePart}-${suffix}`;
+}
+
 function buildClientFromDraft(draft: StudioClientDraft): StudioClient {
   const now = new Date().toISOString();
   return {
@@ -1566,6 +1619,7 @@ function buildChangeLogs(existing: Lead, updated: Lead) {
     ["leadStage", "Stage updated"],
     ["leadTemperature", "Temperature updated"],
     ["nextFollowupDate", "Next follow-up updated"],
+    ["samplePosterSent", "Sample poster updated"],
     ["remarks", "Remarks updated"],
   ];
 
@@ -1592,6 +1646,7 @@ function inferLeadStageFromOutcome(
 function mapLead(row: Record<string, unknown>): Lead {
   return {
     id: text(row.id),
+    leadCode: text(row.lead_code) || createLeadCode(text(row.id), isoText(row.created_at)),
     leadUrl: text(row.lead_url),
     leadName: text(row.lead_name),
     businessName: text(row.business_name),
@@ -1610,6 +1665,8 @@ function mapLead(row: Record<string, unknown>): Lead {
     nextFollowupDate: dateText(row.next_followup_date),
     remarks: text(row.remarks),
     assignedTo: text(row.assigned_to),
+    samplePosterSent: Boolean(row.sample_poster_sent),
+    samplePosterSentAt: isoTextOrBlank(row.sample_poster_sent_at),
     isArchived: Boolean(row.is_archived),
     createdAt: isoText(row.created_at),
     updatedAt: isoText(row.updated_at),
@@ -1729,6 +1786,12 @@ function dateText(value: unknown) {
 
 function isoText(value: unknown) {
   if (!value) return new Date().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function isoTextOrBlank(value: unknown) {
+  if (!value) return "";
   if (value instanceof Date) return value.toISOString();
   return String(value);
 }

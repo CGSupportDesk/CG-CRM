@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   Target,
+  History,
   Users,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   Leads: Target,
   "Follow-ups": CalendarClock,
   Reports: BarChart3,
+  "Activity Logs": History,
   Clients: Users,
   Projects: FolderKanban,
   "Poster Calendar": ClipboardList,

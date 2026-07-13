@@ -34,6 +34,8 @@ const defaultDraft: LeadDraft = {
   firstContactDate: "",
   nextFollowupDate: "",
   assignedTo: DEFAULT_ASSIGNEE,
+  samplePosterSent: false,
+  samplePosterSentAt: "",
   remarks: "",
 };
 
@@ -67,6 +69,8 @@ export function LeadForm({
             firstContactDate: lead.firstContactDate,
             nextFollowupDate: lead.nextFollowupDate,
             assignedTo: lead.assignedTo || DEFAULT_ASSIGNEE,
+            samplePosterSent: lead.samplePosterSent,
+            samplePosterSentAt: lead.samplePosterSentAt,
             remarks: lead.remarks,
           }
         : defaultDraft,
@@ -99,6 +103,14 @@ export function LeadForm({
       ...current,
       leadUrl: value,
       source: inferLeadSourceFromUrl(value) || current.source,
+    }));
+  }
+
+  function setSamplePosterSent(value: boolean) {
+    setDraft((current) => ({
+      ...current,
+      samplePosterSent: value,
+      samplePosterSentAt: value ? current.samplePosterSentAt || new Date().toISOString() : "",
     }));
   }
 
@@ -151,6 +163,9 @@ export function LeadForm({
     if (draft.expectedValue < 0) {
       nextErrors.expectedValue = "Expected value cannot be negative.";
     }
+    if (!draft.remarks.trim()) {
+      nextErrors.remarks = "Remarks are mandatory before saving.";
+    }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) {
       onSubmit({
@@ -158,6 +173,7 @@ export function LeadForm({
         leadName: draft.leadName.trim() || draft.businessName.trim(),
         businessName: draft.businessName.trim() || draft.leadName.trim(),
         nextFollowupDate: calculatedNextFollowupDate,
+        remarks: draft.remarks.trim(),
       });
     }
   }
@@ -333,8 +349,20 @@ export function LeadForm({
           options={assigneeSelectOptions}
           onChange={(value) => setField("assignedTo", value)}
         />
+        <FieldLabel label="Free Sample Poster">
+          <label className={`${inputClasses} flex cursor-pointer items-center justify-between gap-3`}>
+            <span className="text-sm font-semibold">
+              {draft.samplePosterSent ? "Sample sent" : "Not sent yet"}
+            </span>
+            <input
+              type="checkbox"
+              checked={Boolean(draft.samplePosterSent)}
+              onChange={(event) => setSamplePosterSent(event.target.checked)}
+            />
+          </label>
+        </FieldLabel>
       </div>
-      <FieldLabel label="Remarks">
+      <FieldLabel label="Remarks" error={errors.remarks}>
         <textarea
           className={`${inputClasses} min-h-28 py-3`}
           value={draft.remarks}

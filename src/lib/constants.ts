@@ -95,6 +95,7 @@ export const primaryModules = [
   { label: "Leads", href: "/leads" },
   { label: "Follow-ups", href: "/follow-ups" },
   { label: "Reports", href: "/reports" },
+  { label: "Activity Logs", href: "/activity-logs" },
 ];
 
 export const clientStatusOptions: ClientStatus[] = [
@@ -192,6 +193,7 @@ export const phaseOneModules = [
   "Leads",
   "Follow-ups",
   "Reports",
+  "Activity Logs",
   "CSV Import",
   "Clients",
   "Projects",

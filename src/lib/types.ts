@@ -51,6 +51,7 @@ export type WingStatus = "Active" | "Coming Soon";
 
 export interface Lead {
   id: string;
+  leadCode: string;
   leadUrl: string;
   leadName: string;
   businessName: string;
@@ -69,6 +70,8 @@ export interface Lead {
   nextFollowupDate: string;
   remarks: string;
   assignedTo: string;
+  samplePosterSent: boolean;
+  samplePosterSentAt: string;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -76,8 +79,10 @@ export interface Lead {
 
 export type LeadDraft = Omit<
   Lead,
-  "id" | "isArchived" | "createdAt" | "updatedAt"
->;
+  "id" | "leadCode" | "isArchived" | "createdAt" | "updatedAt"
+> & {
+  leadCode?: string;
+};
 
 export interface Followup {
   id: string;
@@ -256,6 +261,16 @@ export type WhatsappTemplateKey =
   | "Will think about it"
   | "Didnt answer the call"
   | "Seen but no reply"
+  | "Expensive - Follow-up 1"
+  | "Expensive - Follow-up 2"
+  | "Has Designer - Follow-up 1"
+  | "Has Designer - Follow-up 2"
+  | "Gone Cold - Follow-up 1"
+  | "Gone Cold - Follow-up 2"
+  | "Not Now - Follow-up 1"
+  | "Not Now - Follow-up 2"
+  | "Questions - Follow-up 1"
+  | "Questions - Follow-up 2"
   | "Custom Message";
 
 export interface SmartLeadSuggestion {

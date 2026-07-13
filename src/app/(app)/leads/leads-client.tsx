@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, Edit3, Eye, FileUp, MessageCircle, Plus, Search, Trash2 } from "lucide-react";
+import { Archive, Download, Edit3, Eye, FileUp, MessageCircle, Plus, Search, Trash2 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { CsvImporter } from "@/components/csv-importer";
 import { useCRM } from "@/components/crm-provider";
@@ -21,6 +21,7 @@ import {
   getWorkingDayDelta,
   type LeadContactTimelineItem,
 } from "@/lib/followup-schedule";
+import { exportRowsToCsv } from "@/lib/export-utils";
 import type {
   Followup,
   FollowupDraft,
@@ -93,6 +94,7 @@ export function LeadsClient() {
       .filter((lead) => {
         const haystack = [
           lead.leadName,
+          lead.leadCode,
           lead.businessName,
           lead.phone,
           lead.leadUrl,
@@ -150,6 +152,37 @@ export function LeadsClient() {
     setMarkingFollowup(null);
   }
 
+  function exportLeads() {
+    exportRowsToCsv(
+      `growth-engine-leads-${todayIso()}.csv`,
+      filteredLeads.map((lead) => ({
+        "Lead ID": lead.leadCode,
+        "Lead Name": lead.leadName,
+        "Business Name": lead.businessName,
+        "Contact Person": lead.contactPerson,
+        Phone: lead.phone,
+        Email: lead.email,
+        URL: lead.leadUrl,
+        Industry: lead.industry,
+        Source: lead.source,
+        Temperature: lead.leadTemperature,
+        Stage: lead.leadStage,
+        Service: lead.serviceInterest,
+        "Expected Value": lead.expectedValue,
+        "Objection Reason": lead.objectionReason,
+        "First Contact Date": lead.firstContactDate,
+        "Next Follow-up Date": lead.nextFollowupDate,
+        "Free Sample Sent": lead.samplePosterSent ? "Yes" : "No",
+        "Free Sample Sent At": lead.samplePosterSentAt,
+        Assigned: lead.assignedTo,
+        Remarks: lead.remarks,
+        Archived: lead.isArchived ? "Yes" : "No",
+        "Created At": lead.createdAt,
+        "Updated At": lead.updatedAt,
+      })),
+    );
+  }
+
   function removeLead(lead: Lead) {
     if (window.confirm(`Delete ${getDisplayName(lead)} permanently?`)) {
       void deleteLead(lead.id);
@@ -170,6 +203,10 @@ export function LeadsClient() {
             <Button variant="secondary" onClick={() => setShowImport((current) => !current)}>
               <FileUp className="h-4 w-4" />
               CSV Import
+            </Button>
+            <Button variant="secondary" onClick={exportLeads}>
+              <Download className="h-4 w-4" />
+              Export Leads
             </Button>
             <Button onClick={() => setAddingLead(true)}>
               <Plus className="h-4 w-4" />
@@ -259,18 +296,43 @@ export function LeadsClient() {
                         <Link href={`/leads/${lead.id}`} className="font-semibold hover:underline">
                           {getDisplayName(lead)}
                         </Link>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-muted">
+                          {lead.leadCode}
+                        </p>
                         <p className="mt-1 truncate text-xs text-muted" title={lead.leadUrl || lead.industry || "No URL"}>
                           {lead.leadUrl || lead.industry || "No URL"}
                         </p>
-                        <p className="mt-1 text-xs font-semibold text-foreground">
-                          {lead.serviceInterest} - {formatCurrency(lead.expectedValue)}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
+                          <span>{lead.serviceInterest} - {formatCurrency(lead.expectedValue)}</span>
+                          <label className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-soft px-2 py-1 text-[10px] font-bold text-muted">
+                            <input
+                              type="checkbox"
+                              checked={lead.samplePosterSent}
+                              onChange={(event) =>
+                                void updateLead(lead.id, {
+                                  samplePosterSent: event.target.checked,
+                                  samplePosterSentAt: event.target.checked
+                                    ? lead.samplePosterSentAt || new Date().toISOString()
+                                    : "",
+                                })
+                              }
+                            />
+                            Sample
+                          </label>
+                        </div>
                         <div className="mt-2">
                           <InlineTextField
                             value={lead.remarks}
                             placeholder="Add remark"
                             title="Update remarks"
-                            onSave={(value) => updateLead(lead.id, { remarks: value })}
+                            onSave={(value) => {
+                              const remarks = value.trim();
+                              if (!remarks) {
+                                window.alert("Remarks are mandatory before saving.");
+                                return;
+                              }
+                              return updateLead(lead.id, { remarks });
+                            }}
                           />
                         </div>
                       </td>

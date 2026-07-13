@@ -51,6 +51,7 @@ export function FollowupForm({
     const nextErrors: Record<string, string> = {};
     if (!draft.leadId) nextErrors.leadId = "Choose a lead.";
     if (!draft.followupDate) nextErrors.followupDate = "Choose the follow-up date.";
+    if (!draft.remarks.trim()) nextErrors.remarks = "Remarks are mandatory before saving.";
     setErrors(nextErrors);
 
     if (!Object.keys(nextErrors).length) {
@@ -59,6 +60,7 @@ export function FollowupForm({
         scheduledFollowupDate,
         markedAt,
         nextFollowupDate: calculatedNextFollowupDate,
+        remarks: draft.remarks.trim(),
       });
     }
   }
@@ -139,7 +141,7 @@ export function FollowupForm({
           </div>
         </FieldLabel>
       </div>
-      <FieldLabel label="Remarks">
+      <FieldLabel label="Remarks" error={errors.remarks}>
         <textarea
           className={`${inputClasses} min-h-28 py-3`}
           value={draft.remarks}

@@ -404,7 +404,13 @@ function normalizeTemplate(value: unknown): WhatsappTemplateKey {
     "final follow-up": "Seen but no reply",
     "final follow up": "Seen but no reply",
     "sample offer": "Will think about it",
-    "price objection": "Will think about it",
+    "price objection": "Expensive - Follow-up 1",
+    expensive: "Expensive - Follow-up 1",
+    "already has designer": "Has Designer - Follow-up 1",
+    "has designer": "Has Designer - Follow-up 1",
+    "gone cold": "Gone Cold - Follow-up 1",
+    "not now": "Not Now - Follow-up 1",
+    questions: "Questions - Follow-up 1",
     none: "Custom Message",
   };
   const legacy = legacyTemplateMap[text(value).toLowerCase()];

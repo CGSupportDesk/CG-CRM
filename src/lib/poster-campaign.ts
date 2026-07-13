@@ -69,9 +69,12 @@ function buildLead(row: TrackerRow): Lead {
   const remarks = [row.remarks, nameNote ? `Lead note: ${nameNote}` : ""]
     .filter(Boolean)
     .join("\n");
+  const id = createId("lead");
+  const createdAt = dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 9);
 
   return {
-    id: createId("lead"),
+    id,
+    leadCode: buildCampaignLeadCode(row.rowNumber, firstContactDate || nextFollowupDate),
     leadUrl: row.leadUrl,
     leadName: contactPerson || businessName,
     businessName,
@@ -93,10 +96,17 @@ function buildLead(row: TrackerRow): Lead {
     nextFollowupDate,
     remarks,
     assignedTo: DEFAULT_ASSIGNEE,
+    samplePosterSent: false,
+    samplePosterSentAt: "",
     isArchived: false,
-    createdAt: dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 9),
+    createdAt,
     updatedAt: dateTimeFromCampaignDate(firstContactDate || nextFollowupDate, 12),
   };
+}
+
+function buildCampaignLeadCode(rowNumber: number, date: string) {
+  const datePart = (date || `${CAMPAIGN_YEAR}-07-04`).slice(2).replace(/-/g, "");
+  return `GE-${datePart}-${String(rowNumber).padStart(4, "0")}`;
 }
 
 function buildActivityLogs(lead: Lead): ActivityLog[] {

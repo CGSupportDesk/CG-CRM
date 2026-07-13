@@ -84,6 +84,8 @@ function mapLegacyRow(row: RawCsvRow, rowNumber: number): ImportPreviewRow | nul
     firstContactDate: contactDate,
     nextFollowupDate: getInitialLeadNextFollowupDate(contactDate, leadStage),
     assignedTo: DEFAULT_ASSIGNEE,
+    samplePosterSent: false,
+    samplePosterSentAt: "",
     remarks,
   };
 

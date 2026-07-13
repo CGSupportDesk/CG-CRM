@@ -104,6 +104,8 @@ export function LeadDetailClient({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{lead.leadTemperature}</Badge>
             <Badge>{lead.leadStage}</Badge>
+            <Badge tone="info">{lead.leadCode}</Badge>
+            {lead.samplePosterSent ? <Badge tone="success">Sample Sent</Badge> : null}
             {lead.isArchived ? <Badge tone="soon">Archived</Badge> : null}
             {isOverdue(lead.nextFollowupDate) ? <Badge tone="danger">Overdue</Badge> : null}
           </div>
@@ -127,7 +129,7 @@ export function LeadDetailClient({ id }: { id: string }) {
 
         <Panel className="space-y-5">
           <h2 className="text-xl font-semibold">Quick actions</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <FieldLabel label="Lead Stage">
               <select
                 className={inputClasses}
@@ -154,6 +156,25 @@ export function LeadDetailClient({ id }: { id: string }) {
               <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
                 {formatDate(lead.nextFollowupDate, "No next follow-up")}
               </div>
+            </FieldLabel>
+            <FieldLabel label="Free Sample">
+              <label className={`${inputClasses} flex cursor-pointer items-center justify-between gap-3`}>
+                <span className="text-sm font-semibold">
+                  {lead.samplePosterSent ? "Sent" : "Not sent"}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={lead.samplePosterSent}
+                  onChange={(event) =>
+                    quickUpdate({
+                      samplePosterSent: event.target.checked,
+                      samplePosterSentAt: event.target.checked
+                        ? lead.samplePosterSentAt || new Date().toISOString()
+                        : "",
+                    })
+                  }
+                />
+              </label>
             </FieldLabel>
           </div>
           <div className="flex flex-wrap gap-2 border-t border-border pt-5">

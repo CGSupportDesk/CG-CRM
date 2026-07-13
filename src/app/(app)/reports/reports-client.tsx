@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, IndianRupee, Percent, Target, TrendingUp } from "lucide-react";
+import { ArrowRight, Download, IndianRupee, Percent, PhoneCall, Target, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useState } from "react";
 import { ReportInsightsPanel } from "@/components/ai-panels";
 import { BarList, DonutChart } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
-import { Badge, EmptyState, PageHeader, Panel, buttonClasses } from "@/components/ui";
+import { Badge, Button, EmptyState, FieldLabel, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import {
   activeLeads,
   clientStatusChart,
+  dailyCallReport,
   designerWorkloadChart,
   followupDueChart,
   getKpis,
@@ -21,22 +23,61 @@ import {
   posterStatusChart,
   projectStatusChart,
   renewalRows,
+  sampleConversionStats,
 } from "@/lib/analytics";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { exportRowsToCsv } from "@/lib/export-utils";
+import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
 
 export function ReportsClient() {
-  const { leads, clients, projects, posterSlots, loading } = useCRM();
+  const { leads, followups, clients, projects, posterSlots, loading } = useCRM();
+  const [callReportDate, setCallReportDate] = useState(todayIso());
   const active = activeLeads(leads);
   const kpis = getKpis(leads);
   const conversionRate = active.length ? Math.round((kpis.wonLeads / active.length) * 100) : 0;
   const monthlyRows = monthlyConversionRows(leads);
   const renewals = renewalRows(clients);
+  const sampleStats = sampleConversionStats(leads, followups);
+  const callReport = dailyCallReport(followups, callReportDate);
   const revenueByService = active.reduce<Record<string, number>>((acc, lead) => {
     if (!["Lost", "Rejected"].includes(lead.leadStage)) {
       acc[lead.serviceInterest] = (acc[lead.serviceInterest] || 0) + lead.expectedValue;
     }
     return acc;
   }, {});
+
+  function exportReports() {
+    exportRowsToCsv(`growth-engine-reports-${todayIso()}.csv`, [
+      { Section: "Overview", Metric: "Active Leads", Value: active.length, Extra: "" },
+      { Section: "Overview", Metric: "Won Leads", Value: kpis.wonLeads, Extra: "" },
+      { Section: "Overview", Metric: "Conversion Rate", Value: `${conversionRate}%`, Extra: "" },
+      { Section: "Overview", Metric: "Expected Revenue", Value: kpis.expectedRevenue, Extra: "" },
+      { Section: "Samples", Metric: "Samples Sent", Value: sampleStats.samplesSent, Extra: "" },
+      { Section: "Samples", Metric: "Samples Won", Value: sampleStats.samplesWon, Extra: "" },
+      { Section: "Samples", Metric: "Sample Conversion Rate", Value: `${sampleStats.sampleConversionRate}%`, Extra: "" },
+      { Section: "Samples", Metric: "Sample + Follow-up Conversion Rate", Value: `${sampleStats.sampleFollowupConversionRate}%`, Extra: "" },
+      { Section: "Daily Calls", Metric: "Report Date", Value: callReport.date, Extra: "" },
+      { Section: "Daily Calls", Metric: "Total Calls", Value: callReport.totalCalls, Extra: "" },
+      { Section: "Daily Calls", Metric: "Top Call Hour", Value: callReport.topHour, Extra: "" },
+      ...Object.entries(callReport.outcomeCounts).map(([outcome, count]) => ({
+        Section: "Daily Call Outcomes",
+        Metric: outcome,
+        Value: count,
+        Extra: callReport.date,
+      })),
+      ...Object.entries(callReport.hourlyCalls).map(([hour, count]) => ({
+        Section: "Daily Call Hours",
+        Metric: hour,
+        Value: count,
+        Extra: callReport.date,
+      })),
+      ...monthlyRows.map((row) => ({
+        Section: "Monthly Conversion",
+        Metric: row.month,
+        Value: row.leads,
+        Extra: `Won: ${row.won}; Expected: ${row.expected}`,
+      })),
+    ]);
+  }
 
   if (loading) {
     return <EmptyState title="Loading reports" description="Preparing lead reports and summary charts." />;
@@ -48,10 +89,16 @@ export function ReportsClient() {
         title="Lead Reports"
         description="CG Studio reports now cover leads, follow-ups, conversions, clients, projects, poster production, designer workload, renewals, and expected revenue."
         action={
-          <Link href="/leads" className={buttonClasses("secondary")}>
-            Review Leads
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+          <>
+            <Button variant="secondary" onClick={exportReports}>
+              <Download className="h-4 w-4" />
+              Export Reports
+            </Button>
+            <Link href="/leads" className={buttonClasses("secondary")}>
+              Review Leads
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </>
         }
       />
 
@@ -60,6 +107,20 @@ export function ReportsClient() {
         <ReportMetric icon={TrendingUp} label="Won Leads" value={kpis.wonLeads} />
         <ReportMetric icon={Percent} label="Conversion Rate" value={`${conversionRate}%`} />
         <ReportMetric icon={IndianRupee} label="Expected Revenue" value={formatCurrency(kpis.expectedRevenue)} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ReportMetric icon={Target} label="Samples Sent" value={sampleStats.samplesSent} />
+        <ReportMetric icon={TrendingUp} label="Samples Won" value={sampleStats.samplesWon} />
+        <ReportMetric icon={Percent} label="Sample Conversion" value={`${sampleStats.sampleConversionRate}%`} />
+        <ReportMetric icon={PhoneCall} label="Follow-up Conversion" value={`${sampleStats.followupConversionRate}%`} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ReportMetric icon={PhoneCall} label="Samples Followed Up" value={sampleStats.samplesWithFollowups} />
+        <ReportMetric icon={TrendingUp} label="Sample Follow-up Won" value={sampleStats.samplesWithFollowupsWon} />
+        <ReportMetric icon={Percent} label="Sample Follow-up Conversion" value={`${sampleStats.sampleFollowupConversionRate}%`} />
+        <ReportMetric icon={Target} label="Followed-up Leads" value={sampleStats.followedUp} />
       </div>
 
       <ReportInsightsPanel />
@@ -90,6 +151,53 @@ export function ReportsClient() {
           <div>
             <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Designer workload</h3>
             <div className="mt-4"><BarList data={designerWorkloadChart(projects, posterSlots)} compact /></div>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Daily call report</h2>
+            <p className="mt-1 text-sm text-muted">
+              Call volume split by outcome and hour, based on the marked time for each follow-up.
+            </p>
+          </div>
+          <FieldLabel label="Report Date">
+            <input
+              className={inputClasses}
+              type="date"
+              value={callReportDate}
+              onChange={(event) => setCallReportDate(event.target.value)}
+            />
+          </FieldLabel>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Total Calls</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{callReport.totalCalls}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Most Calls Made</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{callReport.topHour}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Outcomes Tracked</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{Object.keys(callReport.outcomeCounts).length}</p>
+          </div>
+        </div>
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Call outcomes</h3>
+            <div className="mt-4">
+              <BarList data={callReport.outcomeCounts} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Calls by hour</h3>
+            <div className="mt-4">
+              <BarList data={callReport.hourlyCalls} compact />
+            </div>
           </div>
         </div>
       </Panel>

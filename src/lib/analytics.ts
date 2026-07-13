@@ -7,7 +7,7 @@ import type {
   StudioClient,
   StudioProject,
 } from "./types";
-import { isOverdue, isToday, offsetDate, startOfWeekIso, todayIso } from "./utils";
+import { isOverdue, isToday, offsetDate, startOfWeekIso, todayIso, toLocalIsoDate } from "./utils";
 
 const terminalLeadStages: LeadStage[] = ["Won", "Lost", "Rejected"];
 
@@ -119,6 +119,59 @@ export function monthlyConversionRows(leads: Lead[]) {
   return Object.values(buckets).sort((a, b) => a.month.localeCompare(b.month));
 }
 
+export function sampleConversionStats(leads: Lead[], followups: Followup[]) {
+  const active = activeLeads(leads);
+  const followupLeadIds = new Set(followups.map((followup) => followup.leadId));
+  const sampled = active.filter((lead) => lead.samplePosterSent);
+  const sampledWithFollowups = sampled.filter((lead) => followupLeadIds.has(lead.id));
+  const followedUp = active.filter((lead) => followupLeadIds.has(lead.id));
+
+  return {
+    samplesSent: sampled.length,
+    samplesWon: sampled.filter((lead) => lead.leadStage === "Won").length,
+    sampleConversionRate: percentage(sampled.filter((lead) => lead.leadStage === "Won").length, sampled.length),
+    samplesWithFollowups: sampledWithFollowups.length,
+    samplesWithFollowupsWon: sampledWithFollowups.filter((lead) => lead.leadStage === "Won").length,
+    sampleFollowupConversionRate: percentage(
+      sampledWithFollowups.filter((lead) => lead.leadStage === "Won").length,
+      sampledWithFollowups.length,
+    ),
+    followedUp: followedUp.length,
+    followedUpWon: followedUp.filter((lead) => lead.leadStage === "Won").length,
+    followupConversionRate: percentage(
+      followedUp.filter((lead) => lead.leadStage === "Won").length,
+      followedUp.length,
+    ),
+  };
+}
+
+export function dailyCallReport(followups: Followup[], date = todayIso()) {
+  const hourlyCalls = emptyHourlyBuckets();
+  const outcomeCounts: Record<string, number> = {};
+  const calls = followups.filter(
+    (followup) =>
+      followup.followupType === "Call" &&
+      getLocalDateFromValue(followup.markedAt || followup.createdAt || followup.followupDate) === date,
+  );
+
+  calls.forEach((followup) => {
+    const hour = getLocalHourLabel(followup.markedAt || followup.createdAt || followup.followupDate);
+    hourlyCalls[hour] = (hourlyCalls[hour] || 0) + 1;
+    outcomeCounts[followup.outcome] = (outcomeCounts[followup.outcome] || 0) + 1;
+  });
+
+  const topHourEntry = Object.entries(hourlyCalls).sort((a, b) => b[1] - a[1])[0];
+
+  return {
+    date,
+    totalCalls: calls.length,
+    outcomeCounts,
+    hourlyCalls,
+    topHour: topHourEntry && topHourEntry[1] > 0 ? topHourEntry[0] : "No calls",
+    calls,
+  };
+}
+
 export function getOperationsKpis(
   clients: StudioClient[],
   projects: StudioProject[],
@@ -191,4 +244,41 @@ export function renewalRows(clients: StudioClient[]) {
 
 function isTerminalLead(lead: Pick<Lead, "leadStage">) {
   return terminalLeadStages.includes(lead.leadStage);
+}
+
+function percentage(value: number, total: number) {
+  return total ? Math.round((value / total) * 100) : 0;
+}
+
+function emptyHourlyBuckets() {
+  return Array.from({ length: 12 }, (_, index) => `${String(index + 9).padStart(2, "0")}:00`).reduce<
+    Record<string, number>
+  >((acc, hour) => {
+    acc[hour] = 0;
+    return acc;
+  }, {});
+}
+
+function getLocalDateFromValue(value: string) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return toLocalIsoDate(date);
+}
+
+function getLocalHourLabel(value: string) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00+05:30`)
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value || "00";
+  return `${hour}:00`;
 }
