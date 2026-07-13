@@ -30,6 +30,8 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   Leads: Target,
   "Follow-ups": CalendarClock,
   Reports: BarChart3,
+  Pipeline: FolderKanban,
+  "Data Quality": ClipboardList,
   "Activity Logs": History,
   Clients: Users,
   Projects: FolderKanban,

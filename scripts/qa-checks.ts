@@ -20,7 +20,19 @@ import {
   encodeWhatsAppMessage,
   formatPhoneForWhatsApp,
 } from "../src/lib/whatsapp";
-import { dailyActivityLogReport, dailyCommunicationReport, sampleConversionStats } from "../src/lib/analytics";
+import {
+  dailyActivityLogReport,
+  dailyCommunicationReport,
+  followupAuditSummary,
+  getDataQualityReport,
+  getFollowupAuditRows,
+  getLeadAgingReport,
+  getLeadScores,
+  leadScoreDistribution,
+  sampleConversionStats,
+  samplePosterWorkflow,
+  whatsappTemplatePerformance,
+} from "../src/lib/analytics";
 import { rowsToCsv } from "../src/lib/export-utils";
 import type { ActivityLog, Followup, ImportPreviewRow, Lead, LeadDraft } from "../src/lib/types";
 
@@ -157,6 +169,108 @@ assert.equal(sampleStats.sampleConversionRate, 50);
 assert.equal(sampleStats.followedUp, 3);
 assert.equal(sampleStats.followupConversionRate, 67);
 
+const scoredLeads = getLeadScores(
+  [
+    fullLead({
+      id: "lead_priority",
+      leadTemperature: "Hot",
+      leadStage: "Follow-up Needed",
+      nextFollowupDate: "2026-07-13",
+      expectedValue: 5000,
+      remarks: "Asked for sample and price.",
+      createdAt: "2026-07-08T05:00:00.000Z",
+    }),
+    fullLead({
+      id: "lead_nurture",
+      leadTemperature: "Cold",
+      leadStage: "New Lead",
+      nextFollowupDate: "2026-07-20",
+      createdAt: "2026-07-14T05:00:00.000Z",
+    }),
+  ],
+  [],
+  "2026-07-14",
+);
+assert.equal(scoredLeads[0].lead.id, "lead_priority");
+assert.equal(scoredLeads[0].band, "Priority");
+assert.equal(scoredLeads[0].reasons.includes("Overdue follow-up"), true);
+assert.equal(leadScoreDistribution(scoredLeads).Priority, 1);
+
+const agingReport = getLeadAgingReport(
+  [
+    fullLead({ id: "lead_old", createdAt: "2026-07-01T05:00:00.000Z" }),
+    fullLead({ id: "lead_new", createdAt: "2026-07-13T05:00:00.000Z" }),
+  ],
+  "2026-07-14",
+);
+assert.equal(agingReport.buckets["8-14 days"], 1);
+assert.equal(agingReport.buckets["0-2 days"], 1);
+assert.equal(agingReport.staleLeads[0].lead.id, "lead_old");
+
+const auditRows = getFollowupAuditRows(
+  [fullLead({ id: "lead_audit", firstContactDate: "2026-07-06" })],
+  [
+    followup({
+      id: "followup_audit_late",
+      leadId: "lead_audit",
+      scheduledFollowupDate: "2026-07-07",
+      followupDate: "2026-07-08",
+      markedAt: "2026-07-08T05:00:00.000Z",
+    }),
+  ],
+  "2026-07-14",
+);
+assert.equal(auditRows[0].status, "Pending Late");
+assert.equal(auditRows.find((row) => row.label === "F1")?.status, "Completed Late");
+assert.equal(followupAuditSummary(auditRows)["Completed Late"], 1);
+
+const templateRows = whatsappTemplatePerformance(
+  [fullLead({ id: "lead_template", leadStage: "Won", samplePosterSent: true })],
+  [
+    activityLog({
+      leadId: "lead_template",
+      action: "WhatsApp opened",
+      newValue: "Send me Details",
+      createdAt: "2026-07-14T06:05:00.000Z",
+    }),
+  ],
+);
+assert.equal(templateRows[0].template, "Send me Details");
+assert.equal(templateRows[0].opens, 1);
+assert.equal(templateRows[0].conversionRate, 100);
+assert.equal(templateRows[0].sampleSentLeads, 1);
+
+const dataQuality = getDataQualityReport([
+  fullLead({ id: "lead_duplicate_1", phone: "9633294791", leadUrl: "instagram.com/dupe", remarks: "" }),
+  fullLead({ id: "lead_duplicate_2", phone: "+91 96332 94791", leadUrl: "instagram.com/dupe?igsh=abc", remarks: "" }),
+  fullLead({ id: "lead_missing_followup", phone: "", nextFollowupDate: "", remarks: "Needs cleanup" }),
+]);
+assert.equal(dataQuality.duplicatePhones.length, 1);
+assert.equal(dataQuality.duplicateUrls.length, 1);
+assert.equal(dataQuality.missingNextFollowupDate.length, 1);
+assert.equal(dataQuality.missingRemarks.length, 2);
+
+const sampleWorkflow = samplePosterWorkflow(
+  [
+    fullLead({
+      id: "lead_sample_candidate",
+      leadTemperature: "Warm",
+      objectionReason: "Price High",
+      samplePosterSent: false,
+      remarks: "Said expensive.",
+    }),
+    fullLead({
+      id: "lead_sample_followup",
+      samplePosterSent: true,
+      samplePosterSentAt: "2026-07-12T05:00:00.000Z",
+      nextFollowupDate: "2026-07-14",
+    }),
+  ],
+  [],
+);
+assert.equal(sampleWorkflow.sampleCandidates.length, 1);
+assert.equal(sampleWorkflow.sentNeedsFollowup.length, 1);
+
 const dailyReport = dailyCommunicationReport(
   [
     followup({ followupType: "Call", outcome: "No Response", markedAt: "2026-07-14T04:15:00.000Z" }),
@@ -224,7 +338,7 @@ assert.equal(
   'Name,Remarks,Count\n"A, B","Line 1\nLine 2",2',
 );
 
-console.log("QA checks passed: follow-up schedule, WhatsApp, import dedupe, exports, and report math.");
+console.log("QA checks passed: follow-up schedule, WhatsApp, import dedupe, scoring, aging, audit, data quality, exports, and report math.");
 
 function previewRow(rowNumber: number, lead: Partial<LeadDraft>): ImportPreviewRow {
   return {

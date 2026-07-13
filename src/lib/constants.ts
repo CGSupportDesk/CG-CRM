@@ -92,9 +92,11 @@ export const leadSourceOptions = [
 export const primaryModules = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Daily Sales", href: "/daily-sales" },
+  { label: "Pipeline", href: "/pipeline" },
   { label: "Leads", href: "/leads" },
   { label: "Follow-ups", href: "/follow-ups" },
   { label: "Reports", href: "/reports" },
+  { label: "Data Quality", href: "/data-quality" },
   { label: "Activity Logs", href: "/activity-logs" },
 ];
 
@@ -193,6 +195,8 @@ export const phaseOneModules = [
   "Leads",
   "Follow-ups",
   "Reports",
+  "Pipeline",
+  "Data Quality",
   "Activity Logs",
   "CSV Import",
   "Clients",

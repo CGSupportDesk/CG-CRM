@@ -14,9 +14,15 @@ import {
   dailyActivityLogReport,
   dailyCommunicationReport,
   designerWorkloadChart,
+  followupAuditSummary,
   followupDueChart,
+  getDataQualityReport,
+  getFollowupAuditRows,
   getKpis,
+  getLeadAgingReport,
+  getLeadScores,
   industryChart,
+  leadScoreDistribution,
   leadStageChart,
   leadTemperatureChart,
   monthlyConversionRows,
@@ -25,9 +31,10 @@ import {
   projectStatusChart,
   renewalRows,
   sampleConversionStats,
+  whatsappTemplatePerformance,
 } from "@/lib/analytics";
 import { exportRowsToCsv } from "@/lib/export-utils";
-import { formatCurrency, formatDate, getDisplayName, todayIso } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, getDisplayName, todayIso } from "@/lib/utils";
 
 export function ReportsClient() {
   const { leads, followups, activityLogs, clients, projects, posterSlots, loading } = useCRM();
@@ -41,6 +48,13 @@ export function ReportsClient() {
   const sampleStats = sampleConversionStats(leads, followups);
   const dailyReport = dailyCommunicationReport(followups, activityLogs, callReportDate, leads);
   const activityLogReport = dailyActivityLogReport(activityLogs, activityReportDate);
+  const leadScores = getLeadScores(leads, followups);
+  const scoreDistribution = leadScoreDistribution(leadScores);
+  const agingReport = getLeadAgingReport(leads);
+  const followupAuditRows = getFollowupAuditRows(leads, followups);
+  const auditSummary = followupAuditSummary(followupAuditRows);
+  const templateRows = whatsappTemplatePerformance(leads, activityLogs);
+  const dataQuality = getDataQualityReport(leads);
   const leadById = new Map(leads.map((lead) => [lead.id, lead]));
   const activityByUser = activityLogReport.logs.reduce<Record<string, number>>((acc, log) => {
     const user = log.createdBy || "captain";
@@ -83,6 +97,13 @@ export function ReportsClient() {
       { Section: "Activity Log Report", Metric: "Total Logs", Value: activityLogReport.totalLogs, Extra: "" },
       { Section: "Activity Log Report", Metric: "Busiest Hour", Value: activityLogReport.topHour, Extra: "" },
       { Section: "Activity Log Report", Metric: "Action Types", Value: Object.keys(activityLogReport.actionCounts).length, Extra: "" },
+      { Section: "Lead Scoring", Metric: "Priority Leads", Value: scoreDistribution.Priority || 0, Extra: "" },
+      { Section: "Lead Scoring", Metric: "Healthy Leads", Value: scoreDistribution.Healthy || 0, Extra: "" },
+      { Section: "Lead Aging", Metric: "Open 8+ Days", Value: agingReport.staleLeads.length, Extra: "" },
+      { Section: "Follow-up Audit", Metric: "Pending Late", Value: auditSummary["Pending Late"] || 0, Extra: "" },
+      { Section: "Follow-up Audit", Metric: "Completed Late", Value: auditSummary["Completed Late"] || 0, Extra: "" },
+      { Section: "WhatsApp Templates", Metric: "Templates Opened", Value: templateRows.reduce((sum, row) => sum + row.opens, 0), Extra: "" },
+      { Section: "Data Quality", Metric: "Quality Score", Value: `${dataQuality.qualityScore}%`, Extra: "" },
       ...Object.entries(dailyReport.outcomeCounts).map(([outcome, count]) => ({
         Section: "Daily Call Outcomes",
         Metric: outcome,
@@ -167,6 +188,36 @@ export function ReportsClient() {
         Value: count,
         Extra: activityLogReport.date,
       })),
+      ...leadScores.slice(0, 25).map((score) => ({
+        Section: "Lead Scores",
+        Metric: getDisplayName(score.lead),
+        Value: score.score,
+        Extra: score.reasons.join("; "),
+      })),
+      ...Object.entries(agingReport.buckets).map(([bucket, count]) => ({
+        Section: "Lead Aging Buckets",
+        Metric: bucket,
+        Value: count,
+        Extra: "",
+      })),
+      ...followupAuditRows.slice(0, 50).map((row) => ({
+        Section: "Follow-up Audit Rows",
+        Metric: `${getDisplayName(row.lead)} ${row.label}`,
+        Value: row.status,
+        Extra: `Scheduled: ${row.scheduledDate}; Actual: ${row.actualDate || "Pending"}; ${row.delayText}`,
+      })),
+      ...templateRows.map((row) => ({
+        Section: "WhatsApp Template Performance",
+        Metric: row.template,
+        Value: row.opens,
+        Extra: `Leads: ${row.uniqueLeads}; Won: ${row.wonLeads}; Open-to-won: ${row.conversionRate}%`,
+      })),
+      ...Object.entries(dataQuality.issueCounts).map(([issue, count]) => ({
+        Section: "Data Quality Issues",
+        Metric: issue,
+        Value: count,
+        Extra: "",
+      })),
       ...monthlyRows.map((row) => ({
         Section: "Monthly Conversion",
         Metric: row.month,
@@ -221,6 +272,127 @@ export function ReportsClient() {
       </div>
 
       <ReportInsightsPanel />
+
+      <Panel className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Sales intelligence reports</h2>
+            <p className="mt-1 text-sm text-muted">
+              Lead scoring, aging, follow-up delay, WhatsApp template opens, and data quality.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/pipeline" className={buttonClasses("secondary", "sm")}>Pipeline</Link>
+            <Link href="/data-quality" className={buttonClasses("secondary", "sm")}>Data Quality</Link>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <MiniReportStat label="Priority Leads" value={scoreDistribution.Priority || 0} />
+          <MiniReportStat label="Open 8+ Days" value={agingReport.staleLeads.length} />
+          <MiniReportStat label="Pending Late" value={auditSummary["Pending Late"] || 0} />
+          <MiniReportStat label="Template Opens" value={templateRows.reduce((sum, row) => sum + row.opens, 0)} />
+          <MiniReportStat label="Quality Score" value={`${dataQuality.qualityScore}%`} />
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Lead score distribution</h3>
+            <div className="mt-4"><BarList data={scoreDistribution} /></div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Lead aging report</h3>
+            <div className="mt-4"><BarList data={agingReport.buckets} /></div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Follow-up audit status</h3>
+            <div className="mt-4"><BarList data={auditSummary} /></div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Data quality issues</h3>
+            <div className="mt-4"><BarList data={dataQuality.issueCounts} /></div>
+          </div>
+        </div>
+      </Panel>
+
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Lead aging details</h2>
+            <Badge tone={agingReport.staleLeads.length ? "danger" : "success"}>
+              {agingReport.staleLeads.length} stale
+            </Badge>
+          </div>
+          <div className="mt-5 overflow-hidden rounded-[20px] border border-border">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-left text-sm">
+                <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
+                  <tr>
+                    <th className="px-4 py-3">Lead</th>
+                    <th className="px-4 py-3">Age</th>
+                    <th className="px-4 py-3">Stage</th>
+                    <th className="px-4 py-3">Next</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border bg-white">
+                  {agingReport.staleLeads.length ? (
+                    agingReport.staleLeads.slice(0, 10).map((row) => (
+                      <tr key={row.lead.id}>
+                        <td className="px-4 py-4 font-semibold">
+                          <Link href={`/leads/${row.lead.id}`} className="hover:underline">
+                            {getDisplayName(row.lead)}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-4">{row.ageDays} days</td>
+                        <td className="px-4 py-4"><Badge>{row.lead.leadStage}</Badge></td>
+                        <td className="px-4 py-4">{formatDate(row.lead.nextFollowupDate, "No date")}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-6 text-muted" colSpan={4}>No stale open leads.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">WhatsApp template performance</h2>
+            <Badge tone="neutral">Opened only</Badge>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            This uses Growth Engine activity logs. It does not track delivered, read, or sent status.
+          </p>
+          <div className="mt-5 space-y-3">
+            {templateRows.length ? (
+              templateRows.slice(0, 8).map((row) => (
+                <div key={row.template} className="rounded-2xl border border-border bg-surface-soft p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{row.template}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        Latest: {row.latestOpenAt ? formatDateTime(row.latestOpenAt) : "Not opened"}
+                      </p>
+                    </div>
+                    <Badge tone="neutral">{row.opens} opens</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone="success">{row.wonLeads} won</Badge>
+                    <Badge tone="info">{row.conversionRate}% open-to-won</Badge>
+                    <Badge tone="neutral">{row.sampleSentLeads} sampled</Badge>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyState title="No template opens yet" description="Open WhatsApp from a lead to begin tracking template usage." />
+            )}
+          </div>
+        </Panel>
+      </div>
 
       <Panel className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -584,5 +756,14 @@ function ReportMetric({
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-2 font-mono text-3xl font-bold tracking-tight">{value}</p>
     </Panel>
+  );
+}
+
+function MiniReportStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-[18px] border border-border bg-surface-soft p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-bold">{value}</p>
+    </div>
   );
 }
