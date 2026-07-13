@@ -7,6 +7,10 @@ const TERMINAL_FOLLOWUP_OUTCOMES: FollowupOutcome[] = ["Converted", "Rejected"];
 
 type ScheduleFollowup = Pick<Followup, "followupDate" | "outcome" | "createdAt"> & {
   id?: string;
+  followupType?: Followup["followupType"];
+  leadId?: string;
+  nextFollowupDate?: string;
+  createdBy?: string;
   markedAt?: string;
   remarks?: string;
   scheduledFollowupDate?: string;

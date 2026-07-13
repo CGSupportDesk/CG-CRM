@@ -3,6 +3,7 @@ import "server-only";
 import { neon } from "@neondatabase/serverless";
 import {
   formatFollowupDelay,
+  getNextFollowupDateAfterContact,
   getNextFollowupDateForLead,
   getNextFollowupDateForNewFollowup,
   getScheduledNextDateForFollowup,
@@ -1021,13 +1022,23 @@ async function writeScheduleChanges({
   const currentFollowupById = new Map(currentFollowups.map((followup) => [followup.id, followup]));
   for (const followup of followups) {
     const currentFollowup = currentFollowupById.get(followup.id);
-    if (currentFollowup?.nextFollowupDate === followup.nextFollowupDate) continue;
+    if (
+      currentFollowup?.nextFollowupDate === followup.nextFollowupDate &&
+      currentFollowup?.scheduledFollowupDate === followup.scheduledFollowupDate
+    ) {
+      continue;
+    }
 
     await sql`
       update followups
-      set next_followup_date = ${dateOrNull(followup.nextFollowupDate)}
+      set
+        scheduled_followup_date = ${dateOrNull(followup.scheduledFollowupDate)},
+        next_followup_date = ${dateOrNull(followup.nextFollowupDate)}
       where id = ${followup.id}
-        and coalesce(next_followup_date::text, '') <> ${followup.nextFollowupDate}
+        and (
+          coalesce(next_followup_date::text, '') <> ${followup.nextFollowupDate}
+          or coalesce(scheduled_followup_date::text, '') <> ${followup.scheduledFollowupDate}
+        )
     `;
   }
 }
@@ -1041,10 +1052,19 @@ function applyLeadSchedule(lead: Lead, followups: Followup[]) {
 
 function applyScheduleToLeadAndFollowups(lead: Lead, followups: Followup[]) {
   const sortedFollowups = sortFollowups(followups);
-  const scheduledFollowups = sortedFollowups.map((followup, index) => ({
-    ...followup,
-    nextFollowupDate: getScheduledNextDateForFollowup(followup, index),
-  }));
+  let previousContactDate = lead.firstContactDate;
+  const scheduledFollowups = sortedFollowups.map((followup, index) => {
+    const scheduledFollowupDate = previousContactDate
+      ? getNextFollowupDateAfterContact(previousContactDate, index + 1)
+      : followup.scheduledFollowupDate;
+    previousContactDate = followup.followupDate || scheduledFollowupDate;
+
+    return {
+      ...followup,
+      scheduledFollowupDate,
+      nextFollowupDate: getScheduledNextDateForFollowup(followup, index),
+    };
+  });
 
   return {
     lead: applyLeadSchedule(lead, scheduledFollowups),

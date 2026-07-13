@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarPlus, ExternalLink, MessageCircle, Plus } from "lucide-react";
+import { CalendarPlus, Edit3, ExternalLink, MessageCircle, Plus } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { FollowupForm } from "@/components/followup-form";
-import { Badge, Button, EmptyState, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
+import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { DEFAULT_ASSIGNEE, assigneeOptions, followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
 import { formatFollowupDelay, getWorkingDayDelta } from "@/lib/followup-schedule";
 import { getFollowupTasks } from "@/lib/analytics";
-import type { FollowupDraft, Lead } from "@/lib/types";
+import type { Followup, FollowupDraft, FollowupOutcome, FollowupType, Lead } from "@/lib/types";
 import { formatDate, formatDateTime, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 export function FollowUpsClient() {
@@ -21,6 +21,7 @@ export function FollowUpsClient() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [whatsappLead, setWhatsappLead] = useState<Lead | null>(null);
+  const [editingFollowup, setEditingFollowup] = useState<Followup | null>(null);
 
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const assignedPeople = useMemo(
@@ -163,6 +164,10 @@ export function FollowUpsClient() {
                                     <MessageCircle className="h-4 w-4" />
                                     WhatsApp
                                   </Button>
+                                  <Button variant="secondary" size="sm" onClick={() => setEditingFollowup(followup)}>
+                                    <Edit3 className="h-4 w-4" />
+                                    Update
+                                  </Button>
                                   <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-2 font-bold text-accent-dark">
                                     Open <ExternalLink className="h-3.5 w-3.5" />
                                   </Link>
@@ -205,7 +210,153 @@ export function FollowUpsClient() {
           />
         </Modal>
       ) : null}
+
+      {editingFollowup ? (
+        <Modal
+          title="Update follow-up"
+          description="Changing the actual follow-up date will recalculate the remaining follow-up dates for this lead."
+          onClose={() => setEditingFollowup(null)}
+        >
+          <EditFollowupModal
+            followup={editingFollowup}
+            onCancel={() => setEditingFollowup(null)}
+            onSubmit={async (changes) => {
+              await updateFollowup(editingFollowup.id, changes);
+              setEditingFollowup(null);
+            }}
+          />
+        </Modal>
+      ) : null}
     </div>
+  );
+}
+
+function EditFollowupModal({
+  followup,
+  onSubmit,
+  onCancel,
+}: {
+  followup: Followup;
+  onSubmit: (changes: Partial<FollowupDraft>) => Promise<void> | void;
+  onCancel: () => void;
+}) {
+  const previousActualDate = followup.followupDate;
+  const [actualFollowupDate, setActualFollowupDate] = useState(followup.followupDate);
+  const [followupType, setFollowupType] = useState<FollowupType>(followup.followupType);
+  const [outcome, setOutcome] = useState<FollowupOutcome>(followup.outcome);
+  const [remarks, setRemarks] = useState(followup.remarks);
+  const [markedAt] = useState(() => new Date().toISOString());
+  const [error, setError] = useState("");
+  const delay = getWorkingDayDelta(followup.scheduledFollowupDate, actualFollowupDate);
+
+  async function submit() {
+    const trimmedRemarks = remarks.trim();
+    if (!actualFollowupDate) {
+      setError("Choose the actual follow-up date.");
+      return;
+    }
+    if (!trimmedRemarks) {
+      setError("Remarks are mandatory before updating.");
+      return;
+    }
+
+    await onSubmit({
+      leadId: followup.leadId,
+      scheduledFollowupDate: followup.scheduledFollowupDate,
+      followupDate: actualFollowupDate,
+      followupType,
+      outcome,
+      nextFollowupDate: followup.nextFollowupDate,
+      remarks: trimmedRemarks,
+      createdBy: followup.createdBy,
+      markedAt,
+    });
+  }
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        <FieldLabel label="Scheduled Date">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDate(followup.scheduledFollowupDate, "No schedule")}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Actual Follow-up Date">
+          <div>
+            <input
+              type="date"
+              className={inputClasses}
+              value={actualFollowupDate}
+              onChange={(event) => setActualFollowupDate(event.target.value)}
+            />
+            <p className="mt-1 text-[11px] font-semibold text-muted">
+              Previously mentioned actual follow-up: {formatDate(previousActualDate)}
+            </p>
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Marked Date">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDateTime(markedAt)}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Delay Tracking">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatFollowupDelay(delay)}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Follow-up Type">
+          <select
+            className={inputClasses}
+            value={followupType}
+            onChange={(event) => setFollowupType(event.target.value as FollowupType)}
+          >
+            {followupTypeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Outcome">
+          <select
+            className={inputClasses}
+            value={outcome}
+            onChange={(event) => setOutcome(event.target.value as FollowupOutcome)}
+          >
+            {followupOutcomeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+      </div>
+
+      <FieldLabel label="Remarks" error={error}>
+        <textarea
+          className={`${inputClasses} min-h-28 py-3`}
+          value={remarks}
+          onChange={(event) => {
+            setRemarks(event.target.value);
+            setError("");
+          }}
+          placeholder="Add context for this correction."
+        />
+      </FieldLabel>
+
+      <div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit">Update Follow-up</Button>
+      </div>
+    </form>
   );
 }
 
