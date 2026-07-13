@@ -37,7 +37,7 @@ export function ReportsClient() {
   const monthlyRows = monthlyConversionRows(leads);
   const renewals = renewalRows(clients);
   const sampleStats = sampleConversionStats(leads, followups);
-  const dailyReport = dailyCommunicationReport(followups, activityLogs, callReportDate);
+  const dailyReport = dailyCommunicationReport(followups, activityLogs, callReportDate, leads);
   const revenueByService = active.reduce<Record<string, number>>((acc, lead) => {
     if (!["Lost", "Rejected"].includes(lead.leadStage)) {
       acc[lead.serviceInterest] = (acc[lead.serviceInterest] || 0) + lead.expectedValue;
@@ -56,6 +56,8 @@ export function ReportsClient() {
       { Section: "Samples", Metric: "Sample Conversion Rate", Value: `${sampleStats.sampleConversionRate}%`, Extra: "" },
       { Section: "Samples", Metric: "Sample + Follow-up Conversion Rate", Value: `${sampleStats.sampleFollowupConversionRate}%`, Extra: "" },
       { Section: "Daily Report", Metric: "Report Date", Value: dailyReport.date, Extra: "" },
+      { Section: "Daily Report", Metric: "Leads Created", Value: dailyReport.leadsCreated, Extra: "" },
+      { Section: "Daily Report", Metric: "Follow-ups Logged", Value: dailyReport.totalFollowups, Extra: "" },
       { Section: "Daily Report", Metric: "Total Calls", Value: dailyReport.totalCalls, Extra: "" },
       { Section: "Daily Report", Metric: "WhatsApp / Messages", Value: dailyReport.totalMessages, Extra: "" },
       { Section: "Daily Report", Metric: "Total Activities", Value: dailyReport.totalActivities, Extra: "" },
@@ -64,6 +66,18 @@ export function ReportsClient() {
       { Section: "Daily Report", Metric: "Message Source", Value: dailyReport.messageSource, Extra: "" },
       ...Object.entries(dailyReport.outcomeCounts).map(([outcome, count]) => ({
         Section: "Daily Call Outcomes",
+        Metric: outcome,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.followupTypeCounts).map(([type, count]) => ({
+        Section: "Daily Follow-up Types",
+        Metric: type,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.followupOutcomeCounts).map(([outcome, count]) => ({
+        Section: "Daily Follow-up Outcomes",
         Metric: outcome,
         Value: count,
         Extra: dailyReport.date,
@@ -80,8 +94,20 @@ export function ReportsClient() {
         Value: count,
         Extra: dailyReport.date,
       })),
+      ...Object.entries(dailyReport.hourlyFollowups).map(([hour, count]) => ({
+        Section: "Daily Follow-up Hours",
+        Metric: hour,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
       ...Object.entries(dailyReport.hourlyMessages).map(([hour, count]) => ({
         Section: "Daily Message Hours",
+        Metric: hour,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.hourlyLeadCreations).map(([hour, count]) => ({
+        Section: "Daily Lead Creation Hours",
         Metric: hour,
         Value: count,
         Extra: dailyReport.date,
@@ -89,6 +115,12 @@ export function ReportsClient() {
       ...Object.entries(dailyReport.hourlyActivity).map(([hour, count]) => ({
         Section: "Daily Activity Hours",
         Metric: hour,
+        Value: count,
+        Extra: dailyReport.date,
+      })),
+      ...Object.entries(dailyReport.leadSourceCounts).map(([source, count]) => ({
+        Section: "Daily Leads Created",
+        Metric: source,
         Value: count,
         Extra: dailyReport.date,
       })),
@@ -194,7 +226,15 @@ export function ReportsClient() {
             />
           </FieldLabel>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Leads Created</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.leadsCreated}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Follow-ups Logged</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.totalFollowups}</p>
+          </div>
           <div className="rounded-2xl border border-border bg-surface-soft p-4">
             <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Total Calls</p>
             <p className="mt-2 font-mono text-3xl font-bold">{dailyReport.totalCalls}</p>
@@ -226,12 +266,30 @@ export function ReportsClient() {
             </div>
           </div>
           <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Follow-ups by type</h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.followupTypeCounts} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Follow-up outcomes</h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.followupOutcomeCounts} />
+            </div>
+          </div>
+          <div>
             <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.08em] text-muted">
               <PhoneCall className="h-4 w-4" />
               Calls by hour
             </h3>
             <div className="mt-4">
               <BarList data={dailyReport.hourlyCalls} compact />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Follow-ups by hour</h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.hourlyFollowups} compact />
             </div>
           </div>
           <div>
@@ -243,8 +301,20 @@ export function ReportsClient() {
               <BarList data={dailyReport.hourlyMessages} compact />
             </div>
           </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Leads created by source</h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.leadSourceCounts} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Leads created by hour</h3>
+            <div className="mt-4">
+              <BarList data={dailyReport.hourlyLeadCreations} compact />
+            </div>
+          </div>
           <div className="xl:col-span-2">
-            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Combined calls and messages by hour</h3>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Combined daily activity by hour</h3>
             <div className="mt-4">
               <BarList data={dailyReport.hourlyActivity} compact />
             </div>

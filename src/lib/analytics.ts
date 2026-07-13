@@ -151,33 +151,32 @@ export function dailyCallReport(
   followups: Followup[],
   activityLogs: ActivityLog[] = [],
   date = todayIso(),
+  leads: Lead[] = [],
 ) {
-  return dailyCommunicationReport(followups, activityLogs, date);
+  return dailyCommunicationReport(followups, activityLogs, date, leads);
 }
 
 export function dailyCommunicationReport(
   followups: Followup[],
   activityLogs: ActivityLog[] = [],
   date = todayIso(),
+  leads: Lead[] = [],
 ) {
   const hourlyCalls = emptyHourlyBuckets();
+  const hourlyFollowups = emptyHourlyBuckets();
   const hourlyMessages = emptyHourlyBuckets();
+  const hourlyLeadCreations = emptyHourlyBuckets();
   const hourlyActivity = emptyHourlyBuckets();
   const outcomeCounts: Record<string, number> = {};
+  const followupTypeCounts: Record<string, number> = {};
+  const followupOutcomeCounts: Record<string, number> = {};
   const messageCounts: Record<string, number> = {};
+  const leadSourceCounts: Record<string, number> = {};
   const parsedFollowupLogs = activityLogs
     .filter((log) => log.action === "Follow-up added")
     .map(parseFollowupLog);
-  const callLogs = parsedFollowupLogs
-    .filter(
-      (log) =>
-        log.type === "Call" &&
-        getLocalDateFromValue(log.createdAt) === date,
-    );
-  const messageFollowupLogs = parsedFollowupLogs.filter(
-    (log) =>
-      isMessageFollowupType(log.type) &&
-      getLocalDateFromValue(log.createdAt) === date,
+  const followupLogs = parsedFollowupLogs.filter(
+    (log) => getLocalDateFromValue(log.createdAt) === date,
   );
   const whatsappOpenLogs = activityLogs
     .filter(
@@ -192,77 +191,95 @@ export function dailyCommunicationReport(
       createdAt: log.createdAt,
       source: "WhatsApp opened",
     }));
-
-  const fallbackCalls = followups.filter(
+  const fallbackFollowups = followups.filter(
     (followup) =>
-      followup.followupType === "Call" &&
       getLocalDateFromValue(followup.markedAt || followup.createdAt || followup.followupDate) === date,
   );
-  const calls = callLogs.length
-    ? callLogs
-    : fallbackCalls.map((followup) => ({
-        id: followup.id,
-        type: followup.followupType,
-        outcome: followup.outcome,
-        createdAt: followup.markedAt || followup.createdAt || followup.followupDate,
-      }));
-  const fallbackMessageFollowups = followups.filter(
-    (followup) =>
-      isMessageFollowupType(followup.followupType) &&
-      getLocalDateFromValue(followup.markedAt || followup.createdAt || followup.followupDate) === date,
-  );
-  const loggedMessages = messageFollowupLogs.length
-    ? messageFollowupLogs.map((log) => ({
+  const followupRecords = followupLogs.length
+    ? followupLogs.map((log) => ({
         ...log,
-        source: "Follow-up logged",
+        source: "Activity logs",
       }))
-    : fallbackMessageFollowups.map((followup) => ({
+    : fallbackFollowups.map((followup) => ({
         id: followup.id,
         type: followup.followupType,
         outcome: followup.outcome,
         createdAt: followup.markedAt || followup.createdAt || followup.followupDate,
         source: "Follow-up records",
       }));
+  const calls = followupRecords.filter((followup) => followup.type === "Call");
+  const loggedMessages = followupRecords.filter((followup) => isMessageFollowupType(followup.type));
   const messages = [...whatsappOpenLogs, ...loggedMessages];
+  const leadsCreated = leads.filter((lead) => getLocalDateFromValue(lead.createdAt) === date);
+
+  followupRecords.forEach((followup) => {
+    const hour = getLocalHourLabel(followup.createdAt);
+    hourlyFollowups[hour] = (hourlyFollowups[hour] || 0) + 1;
+    hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
+    followupTypeCounts[followup.type] = (followupTypeCounts[followup.type] || 0) + 1;
+    followupOutcomeCounts[followup.outcome] = (followupOutcomeCounts[followup.outcome] || 0) + 1;
+  });
 
   calls.forEach((call) => {
     const hour = getLocalHourLabel(call.createdAt);
     hourlyCalls[hour] = (hourlyCalls[hour] || 0) + 1;
-    hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
     outcomeCounts[call.outcome] = (outcomeCounts[call.outcome] || 0) + 1;
   });
 
   messages.forEach((message) => {
     const hour = getLocalHourLabel(message.createdAt);
     hourlyMessages[hour] = (hourlyMessages[hour] || 0) + 1;
-    hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
+    if (message.source === "WhatsApp opened") {
+      hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
+    }
     const label = message.source === "WhatsApp opened"
       ? `Template: ${message.outcome}`
       : `${message.type}: ${message.outcome}`;
     messageCounts[label] = (messageCounts[label] || 0) + 1;
   });
 
+  leadsCreated.forEach((lead) => {
+    const hour = getLocalHourLabel(lead.createdAt);
+    hourlyLeadCreations[hour] = (hourlyLeadCreations[hour] || 0) + 1;
+    hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
+    const source = lead.source || "Not Set";
+    leadSourceCounts[source] = (leadSourceCounts[source] || 0) + 1;
+  });
+
   const topHourEntry = Object.entries(hourlyCalls).sort((a, b) => b[1] - a[1])[0];
+  const topFollowupHourEntry = Object.entries(hourlyFollowups).sort((a, b) => b[1] - a[1])[0];
   const topMessageHourEntry = Object.entries(hourlyMessages).sort((a, b) => b[1] - a[1])[0];
+  const topLeadCreationHourEntry = Object.entries(hourlyLeadCreations).sort((a, b) => b[1] - a[1])[0];
   const topActivityHourEntry = Object.entries(hourlyActivity).sort((a, b) => b[1] - a[1])[0];
 
   return {
     date,
+    leadsCreated: leadsCreated.length,
+    totalFollowups: followupRecords.length,
     totalCalls: calls.length,
     totalMessages: messages.length,
-    totalActivities: calls.length + messages.length,
+    totalActivities: followupRecords.length + whatsappOpenLogs.length + leadsCreated.length,
     outcomeCounts,
+    followupTypeCounts,
+    followupOutcomeCounts,
     messageCounts,
+    leadSourceCounts,
     hourlyCalls,
+    hourlyFollowups,
     hourlyMessages,
+    hourlyLeadCreations,
     hourlyActivity,
     topHour: topHourEntry && topHourEntry[1] > 0 ? topHourEntry[0] : "No calls",
+    topFollowupHour: topFollowupHourEntry && topFollowupHourEntry[1] > 0 ? topFollowupHourEntry[0] : "No follow-ups",
     topMessageHour: topMessageHourEntry && topMessageHourEntry[1] > 0 ? topMessageHourEntry[0] : "No messages",
+    topLeadCreationHour: topLeadCreationHourEntry && topLeadCreationHourEntry[1] > 0 ? topLeadCreationHourEntry[0] : "No leads",
     topActivityHour: topActivityHourEntry && topActivityHourEntry[1] > 0 ? topActivityHourEntry[0] : "No activity",
-    source: callLogs.length ? "Activity logs" : "Follow-up records",
-    messageSource: messageFollowupLogs.length || whatsappOpenLogs.length ? "Activity logs" : "Follow-up records",
+    source: followupLogs.length ? "Activity logs" : "Follow-up records",
+    messageSource: followupLogs.length || whatsappOpenLogs.length ? "Activity logs" : "Follow-up records",
+    followups: followupRecords,
     calls,
     messages,
+    createdLeads: leadsCreated,
   };
 }
 

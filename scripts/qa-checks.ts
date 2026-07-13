@@ -170,20 +170,39 @@ const dailyReport = dailyCommunicationReport(
     activityLog({ action: "WhatsApp opened", newValue: "Send me Details", createdAt: "2026-07-14T06:05:00.000Z" }),
   ],
   "2026-07-14",
+  [
+    fullLead({ id: "lead_created_instagram", source: "Instagram", createdAt: "2026-07-14T02:45:00.000Z" }),
+    fullLead({ id: "lead_created_referral", source: "Referral", createdAt: "2026-07-14T05:50:00.000Z" }),
+    fullLead({ id: "lead_created_previous", source: "Facebook", createdAt: "2026-07-13T05:50:00.000Z" }),
+  ],
 );
+assert.equal(dailyReport.leadsCreated, 2);
+assert.equal(dailyReport.totalFollowups, 3);
 assert.equal(dailyReport.totalCalls, 2);
 assert.equal(dailyReport.totalMessages, 2);
-assert.equal(dailyReport.totalActivities, 4);
+assert.equal(dailyReport.totalActivities, 6);
 assert.equal(dailyReport.outcomeCounts["No Response"], 1);
 assert.equal(dailyReport.outcomeCounts.Interested, 1);
+assert.equal(dailyReport.followupTypeCounts.Call, 2);
+assert.equal(dailyReport.followupTypeCounts.WhatsApp, 1);
+assert.equal(dailyReport.followupOutcomeCounts["Details Sent"], 1);
 assert.equal(dailyReport.messageCounts["WhatsApp: Details Sent"], 1);
 assert.equal(dailyReport.messageCounts["Template: Send me Details"], 1);
 assert.equal(dailyReport.hourlyCalls["10:00"], 2);
+assert.equal(dailyReport.hourlyFollowups["10:00"], 2);
+assert.equal(dailyReport.hourlyFollowups["09:00"], 1);
 assert.equal(dailyReport.hourlyMessages["09:00"], 1);
 assert.equal(dailyReport.hourlyMessages["11:00"], 1);
 assert.equal(dailyReport.hourlyActivity["10:00"], 2);
+assert.equal(dailyReport.hourlyActivity["11:00"], 2);
+assert.equal(dailyReport.hourlyLeadCreations["08:00"], 1);
+assert.equal(dailyReport.hourlyLeadCreations["11:00"], 1);
+assert.equal(dailyReport.leadSourceCounts.Instagram, 1);
+assert.equal(dailyReport.leadSourceCounts.Referral, 1);
 assert.equal(dailyReport.topHour, "10:00");
+assert.equal(dailyReport.topFollowupHour, "10:00");
 assert.equal(dailyReport.topMessageHour, "09:00");
+assert.equal(dailyReport.topLeadCreationHour, "08:00");
 assert.equal(dailyReport.source, "Activity logs");
 assert.equal(dailyReport.messageSource, "Activity logs");
 
