@@ -11,6 +11,7 @@ import { Badge, Button, EmptyState, FieldLabel, PageHeader, Panel, buttonClasses
 import {
   activeLeads,
   clientStatusChart,
+  dailyActivityLogReport,
   dailyCommunicationReport,
   designerWorkloadChart,
   followupDueChart,
@@ -26,11 +27,12 @@ import {
   sampleConversionStats,
 } from "@/lib/analytics";
 import { exportRowsToCsv } from "@/lib/export-utils";
-import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
+import { formatCurrency, formatDate, getDisplayName, todayIso } from "@/lib/utils";
 
 export function ReportsClient() {
   const { leads, followups, activityLogs, clients, projects, posterSlots, loading } = useCRM();
   const [callReportDate, setCallReportDate] = useState(todayIso());
+  const [activityReportDate, setActivityReportDate] = useState(todayIso());
   const active = activeLeads(leads);
   const kpis = getKpis(leads);
   const conversionRate = active.length ? Math.round((kpis.wonLeads / active.length) * 100) : 0;
@@ -38,6 +40,19 @@ export function ReportsClient() {
   const renewals = renewalRows(clients);
   const sampleStats = sampleConversionStats(leads, followups);
   const dailyReport = dailyCommunicationReport(followups, activityLogs, callReportDate, leads);
+  const activityLogReport = dailyActivityLogReport(activityLogs, activityReportDate);
+  const leadById = new Map(leads.map((lead) => [lead.id, lead]));
+  const activityByUser = activityLogReport.logs.reduce<Record<string, number>>((acc, log) => {
+    const user = log.createdBy || "captain";
+    acc[user] = (acc[user] || 0) + 1;
+    return acc;
+  }, {});
+  const activityByLead = activityLogReport.logs.reduce<Record<string, number>>((acc, log) => {
+    const lead = leadById.get(log.leadId);
+    const label = lead ? getDisplayName(lead) : log.leadId || "Unknown lead";
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
   const revenueByService = active.reduce<Record<string, number>>((acc, lead) => {
     if (!["Lost", "Rejected"].includes(lead.leadStage)) {
       acc[lead.serviceInterest] = (acc[lead.serviceInterest] || 0) + lead.expectedValue;
@@ -64,6 +79,10 @@ export function ReportsClient() {
       { Section: "Daily Report", Metric: "Top Activity Hour", Value: dailyReport.topActivityHour, Extra: "" },
       { Section: "Daily Report", Metric: "Call Source", Value: dailyReport.source, Extra: "" },
       { Section: "Daily Report", Metric: "Message Source", Value: dailyReport.messageSource, Extra: "" },
+      { Section: "Activity Log Report", Metric: "Report Date", Value: activityLogReport.date, Extra: "" },
+      { Section: "Activity Log Report", Metric: "Total Logs", Value: activityLogReport.totalLogs, Extra: "" },
+      { Section: "Activity Log Report", Metric: "Busiest Hour", Value: activityLogReport.topHour, Extra: "" },
+      { Section: "Activity Log Report", Metric: "Action Types", Value: Object.keys(activityLogReport.actionCounts).length, Extra: "" },
       ...Object.entries(dailyReport.outcomeCounts).map(([outcome, count]) => ({
         Section: "Daily Call Outcomes",
         Metric: outcome,
@@ -123,6 +142,30 @@ export function ReportsClient() {
         Metric: source,
         Value: count,
         Extra: dailyReport.date,
+      })),
+      ...Object.entries(activityLogReport.actionCounts).map(([action, count]) => ({
+        Section: "Activity Log Actions",
+        Metric: action,
+        Value: count,
+        Extra: activityLogReport.date,
+      })),
+      ...Object.entries(activityLogReport.hourlyLogs).map(([hour, count]) => ({
+        Section: "Activity Log Hours",
+        Metric: hour,
+        Value: count,
+        Extra: activityLogReport.date,
+      })),
+      ...Object.entries(activityByUser).map(([user, count]) => ({
+        Section: "Activity Log Users",
+        Metric: user,
+        Value: count,
+        Extra: activityLogReport.date,
+      })),
+      ...Object.entries(activityByLead).map(([lead, count]) => ({
+        Section: "Activity Log Leads",
+        Metric: lead,
+        Value: count,
+        Extra: activityLogReport.date,
       })),
       ...monthlyRows.map((row) => ({
         Section: "Monthly Conversion",
@@ -317,6 +360,71 @@ export function ReportsClient() {
             <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Combined daily activity by hour</h3>
             <div className="mt-4">
               <BarList data={dailyReport.hourlyActivity} compact />
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Activity log report</h2>
+            <p className="mt-1 text-sm text-muted">
+              Infographic view of all CRM activity for a selected day, filtered directly from the activity log.
+            </p>
+          </div>
+          <FieldLabel label="Activity Date">
+            <input
+              className={inputClasses}
+              type="date"
+              value={activityReportDate}
+              onChange={(event) => setActivityReportDate(event.target.value)}
+            />
+          </FieldLabel>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Total Logs</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{activityLogReport.totalLogs}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Busiest Hour</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{activityLogReport.topHour}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Action Types</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{Object.keys(activityLogReport.actionCounts).length}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-soft p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">Leads Touched</p>
+            <p className="mt-2 font-mono text-3xl font-bold">{Object.keys(activityByLead).length}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Activities by type</h3>
+            <div className="mt-4">
+              <BarList data={activityLogReport.actionCounts} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Activities by hour</h3>
+            <div className="mt-4">
+              <BarList data={activityLogReport.hourlyLogs} compact />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Activities by user</h3>
+            <div className="mt-4">
+              <BarList data={activityByUser} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.08em] text-muted">Most active leads</h3>
+            <div className="mt-4">
+              <BarList data={activityByLead} />
             </div>
           </div>
         </div>
