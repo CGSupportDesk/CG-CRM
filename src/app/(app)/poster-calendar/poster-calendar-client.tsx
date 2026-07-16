@@ -21,6 +21,7 @@ export function PosterCalendarClient() {
     generatePosterSlots,
   } = useCRM();
   const [month, setMonth] = useState(todayIso().slice(0, 7));
+  const [clientFilter, setClientFilter] = useState("all");
   const [projectId, setProjectId] = useState("");
   const [editingSlot, setEditingSlot] = useState<PosterSlot | null>(null);
   const [addingSlot, setAddingSlot] = useState(false);
@@ -28,11 +29,23 @@ export function PosterCalendarClient() {
 
   const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
-  const posterProjects = projects.filter((project) => project.projectType === "Poster Package");
-  const selectedProjectId = projectId || posterProjects[0]?.id || projects[0]?.id || "";
-  const monthSlots = posterSlots
+  const filteredProjects = projects.filter(
+    (project) => clientFilter === "all" || project.clientId === clientFilter,
+  );
+  const posterProjects = filteredProjects.filter((project) => project.projectType === "Poster Package");
+  const projectOptions = [
+    ...posterProjects,
+    ...filteredProjects.filter((project) => project.projectType !== "Poster Package"),
+  ];
+  const selectedProjectId = projectOptions.some((project) => project.id === projectId)
+    ? projectId
+    : projectOptions[0]?.id || "";
+  const allMonthSlots = posterSlots
     .filter((slot) => slot.slotDate.startsWith(month))
     .sort((a, b) => a.slotDate.localeCompare(b.slotDate));
+  const monthSlots = allMonthSlots.filter(
+    (slot) => clientFilter === "all" || slot.clientId === clientFilter,
+  );
   const workflowColumns = posterSlotStatusOptions.map((status) => ({
     status,
     slots: monthSlots.filter((slot) => slot.status === status),
@@ -82,13 +95,23 @@ export function PosterCalendarClient() {
       />
 
       <Panel className="space-y-5">
-        <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[180px_240px_1fr_auto_auto] lg:items-end">
           <FieldLabel label="Month">
             <input className={inputClasses} type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
           </FieldLabel>
+          <FieldLabel label="Filter By Client">
+            <select className={inputClasses} value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
+              <option value="all">All clients</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.clientName}
+                </option>
+              ))}
+            </select>
+          </FieldLabel>
           <FieldLabel label="Generate For Project">
             <select className={inputClasses} value={selectedProjectId} onChange={(event) => setProjectId(event.target.value)}>
-              {[...posterProjects, ...projects.filter((project) => project.projectType !== "Poster Package")].map((project) => (
+              {projectOptions.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.projectName}
                 </option>
@@ -100,6 +123,15 @@ export function PosterCalendarClient() {
             Generate Slots
           </Button>
           {saving ? <Badge tone="info">Saving...</Badge> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="neutral">{monthSlots.length} visible slots</Badge>
+          <Badge tone="neutral">{allMonthSlots.length} total this month</Badge>
+          {clientFilter !== "all" ? (
+            <Button variant="secondary" size="sm" onClick={() => setClientFilter("all")}>
+              Clear client filter
+            </Button>
+          ) : null}
         </div>
         {generatedMessage ? (
           <div className="rounded-2xl border border-[#b8ead6] bg-[#eafaf3] p-4 text-sm font-semibold text-[#0c7c52]">
@@ -182,7 +214,7 @@ export function PosterCalendarClient() {
         ) : (
           <EmptyState
             title="No workflow slots"
-            description="Generate this month's poster slots to start production tracking."
+            description={clientFilter === "all" ? "Generate this month's poster slots to start production tracking." : "No poster slots match this client filter for the selected month."}
             action={<Button onClick={generateSlots} disabled={!selectedProjectId}>Generate Slots</Button>}
           />
         )}
@@ -247,7 +279,7 @@ export function PosterCalendarClient() {
         ) : (
           <EmptyState
             title="No poster slots this month"
-            description="Generate monthly poster slots from an active poster package project or add a single slot manually."
+            description={clientFilter === "all" ? "Generate monthly poster slots from an active poster package project or add a single slot manually." : "Clear the client filter or generate slots for this client."}
             action={<Button onClick={generateSlots} disabled={!selectedProjectId}>Generate Slots</Button>}
           />
         )}
