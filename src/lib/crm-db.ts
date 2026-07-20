@@ -8,6 +8,7 @@ import {
   getNextFollowupDateForNewFollowup,
   getScheduledNextDateForFollowup,
   getWorkingDayDelta,
+  isTerminalStage,
   sortFollowups,
 } from "@/lib/followup-schedule";
 import { findImportDuplicate } from "@/lib/import-dedupe";
@@ -91,9 +92,42 @@ export async function addLeadRecord(leadDraft: LeadDraft) {
     }),
     [],
   );
-  const log = buildLog(lead.id, "Lead created", "", lead.leadStage);
-
   const sql = getSql();
+  const existingLeads = ((await sql`select * from leads order by created_at desc`) as Array<
+    Record<string, unknown>
+  >).map(mapLead);
+  const duplicate = findImportDuplicate(lead, existingLeads);
+  const existingLead = duplicate
+    ? existingLeads.find((existing) => existing.id === duplicate.leadId) || null
+    : null;
+
+  if (existingLead) {
+    const existingFollowups = await getFollowupsByLeadId(existingLead.id);
+    const mergedLead = {
+      ...mergeImportedLead(existingLead, { ...lead, id: existingLead.id, leadCode: existingLead.leadCode }, now),
+      leadStage: isTerminalStage(lead.leadStage) ? lead.leadStage : existingLead.leadStage,
+      isArchived: false,
+      updatedAt: now,
+    };
+    const scheduled = applyLeadSchedule(mergedLead, existingFollowups);
+
+    await updateLead(scheduled);
+    if (scheduled.leadStage === "Won") {
+      await ensureClientForWonLead(scheduled);
+    }
+    await insertLogs([
+      buildLog(
+        existingLead.id,
+        "Duplicate lead prevented",
+        duplicate?.reason || "",
+        `Manual add matched ${duplicate?.existingValue || "existing lead"}`,
+      ),
+    ]);
+
+    return { id: existingLead.id, state: await readCrmState(sql) };
+  }
+
+  const log = buildLog(lead.id, "Lead created", "", lead.leadStage);
   await insertLead(lead);
   await insertLogs([log]);
 

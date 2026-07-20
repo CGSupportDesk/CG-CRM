@@ -45,7 +45,7 @@ export function LeadForm({
   onCancel,
 }: {
   lead?: Lead;
-  onSubmit: (draft: LeadDraft) => void;
+  onSubmit: (draft: LeadDraft) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const initial = useMemo<LeadDraft>(
@@ -81,6 +81,7 @@ export function LeadForm({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState<SmartLeadSuggestion | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const sourceOptions = useMemo(
     () => Array.from(new Set([...leadSourceOptions, draft.source].filter(Boolean))),
     [draft.source],
@@ -152,7 +153,9 @@ export function LeadForm({
     }));
   }
 
-  function submit() {
+  async function submit() {
+    if (submitting) return;
+
     const nextErrors: Record<string, string> = {};
     if (!draft.leadName.trim() && !draft.businessName.trim()) {
       nextErrors.leadName = "Add a lead name or business name.";
@@ -168,13 +171,18 @@ export function LeadForm({
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) {
-      onSubmit({
-        ...draft,
-        leadName: draft.leadName.trim() || draft.businessName.trim(),
-        businessName: draft.businessName.trim() || draft.leadName.trim(),
-        nextFollowupDate: calculatedNextFollowupDate,
-        remarks: draft.remarks.trim(),
-      });
+      setSubmitting(true);
+      try {
+        await onSubmit({
+          ...draft,
+          leadName: draft.leadName.trim() || draft.businessName.trim(),
+          businessName: draft.businessName.trim() || draft.leadName.trim(),
+          nextFollowupDate: calculatedNextFollowupDate,
+          remarks: draft.remarks.trim(),
+        });
+      } finally {
+        setSubmitting(false);
+      }
     }
   }
 
@@ -183,7 +191,7 @@ export function LeadForm({
       className="space-y-5"
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        void submit();
       }}
     >
       <div className="rounded-[20px] border border-border bg-surface-soft p-4">
@@ -374,7 +382,9 @@ export function LeadForm({
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">{lead ? "Save Changes" : "Add Lead"}</Button>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Saving..." : lead ? "Save Changes" : "Add Lead"}
+        </Button>
       </div>
     </form>
   );
