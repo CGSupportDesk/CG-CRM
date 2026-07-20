@@ -177,8 +177,8 @@ export function PosterCalendarClient() {
                   <Badge>{status}</Badge>
                   <span className="font-mono text-sm font-bold text-muted">{slots.length}</span>
                 </div>
-                <div className="mt-3 space-y-2">
-                  {slots.slice(0, 5).map((slot) => {
+                <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                  {slots.map((slot) => {
                     const client = clientById.get(slot.clientId);
                     const nextStatus = getNextPosterStatus(slot.status);
                     return (
