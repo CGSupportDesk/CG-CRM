@@ -271,9 +271,29 @@ export function ReportsClient() {
         <ReportMetric icon={Target} label="Followed-up Leads" value={sampleStats.followedUp} />
       </div>
 
+      <Panel className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Report shortcuts</h2>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Jump straight to the section you need during the morning review.
+            </p>
+          </div>
+          <Badge tone="success">Daily ready</Badge>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <ReportJumpCard href="#sales-intelligence" label="Sales Intelligence" value={scoreDistribution.Priority || 0} detail="priority leads" />
+          <ReportJumpCard href="#daily-report" label="Daily Calls" value={dailyReport.totalCalls} detail="calls logged" />
+          <ReportJumpCard href="#daily-report" label="Daily Messages" value={dailyReport.totalMessages} detail="WhatsApp/messages" />
+          <ReportJumpCard href="#activity-report" label="Activity Logs" value={activityLogReport.totalLogs} detail="logs on date" />
+          <ReportJumpCard href="#operation-reports" label="Operations" value={projects.length + posterSlots.length} detail="projects + slots" />
+          <ReportJumpCard href="#data-quality-report" label="Data Quality" value={`${dataQuality.qualityScore}%`} detail="quality score" />
+        </div>
+      </Panel>
+
       <ReportInsightsPanel />
 
-      <Panel className="space-y-5">
+      <Panel id="sales-intelligence" className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Sales intelligence reports</h2>
@@ -315,7 +335,7 @@ export function ReportsClient() {
         </div>
       </Panel>
 
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+      <div id="data-quality-report" className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">Lead aging details</h2>
@@ -394,7 +414,7 @@ export function ReportsClient() {
         </Panel>
       </div>
 
-      <Panel className="space-y-5">
+      <Panel id="operation-reports" className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Operation Reports</h2>
@@ -424,7 +444,7 @@ export function ReportsClient() {
         </div>
       </Panel>
 
-      <Panel className="space-y-5">
+      <Panel id="daily-report" className="space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold">Daily sales report</h2>
@@ -537,7 +557,7 @@ export function ReportsClient() {
         </div>
       </Panel>
 
-      <Panel className="space-y-5">
+      <Panel id="activity-report" className="space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold">Activity log report</h2>
@@ -756,6 +776,29 @@ function ReportMetric({
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-2 font-mono text-3xl font-bold tracking-tight">{value}</p>
     </Panel>
+  );
+}
+
+function ReportJumpCard({
+  href,
+  label,
+  value,
+  detail,
+}: {
+  href: string;
+  label: string;
+  value: string | number;
+  detail: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="rounded-[18px] border border-border bg-surface-soft p-4 transition hover:border-[#c2d1d8] hover:bg-white"
+    >
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-bold">{value}</p>
+      <p className="mt-1 text-xs font-semibold text-muted">{detail}</p>
+    </a>
   );
 }
 

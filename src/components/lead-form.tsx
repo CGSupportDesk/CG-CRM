@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
-import { Button, FieldLabel, inputClasses } from "@/components/ui";
+import { CheckCircle2, Sparkles } from "lucide-react";
+import { Badge, Button, FieldLabel, inputClasses } from "@/components/ui";
 import {
   DEFAULT_ASSIGNEE,
   assigneeOptions,
@@ -94,6 +94,14 @@ export function LeadForm({
     draft.firstContactDate,
     draft.leadStage,
   );
+  const formChecks = [
+    { label: "Name", done: Boolean(draft.leadName.trim() || draft.businessName.trim()) },
+    { label: "Phone / URL", done: Boolean(draft.phone.trim() || draft.leadUrl.trim()) },
+    { label: "First Contact", done: Boolean(draft.firstContactDate) },
+    { label: "Remarks", done: Boolean(draft.remarks.trim()) },
+    { label: "Auto Follow-up", done: Boolean(calculatedNextFollowupDate) || ["Won", "Lost", "Rejected"].includes(draft.leadStage) },
+  ];
+  const completedChecks = formChecks.filter((item) => item.done).length;
 
   function setField<Key extends keyof LeadDraft>(key: Key, value: LeadDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -194,6 +202,35 @@ export function LeadForm({
         void submit();
       }}
     >
+      <div className="grid gap-3 rounded-[20px] border border-border bg-white p-4 md:grid-cols-[1fr_auto] md:items-center">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold">Lead entry checklist</p>
+            <Badge tone={completedChecks === formChecks.length ? "success" : "info"}>
+              {completedChecks}/{formChecks.length} ready
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Fill the essentials first. Growth Engine will generate the next follow-up from the first contact date.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5 md:justify-end">
+          {formChecks.map((item) => (
+            <span
+              key={item.label}
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                item.done
+                  ? "border-[#b8ead6] bg-[#eafaf3] text-[#0c7c52]"
+                  : "border-[#d8e0e4] bg-surface-soft text-muted"
+              }`}
+            >
+              {item.done ? <CheckCircle2 className="h-3 w-3" /> : null}
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
       <div className="rounded-[20px] border border-border bg-surface-soft p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -369,6 +406,12 @@ export function LeadForm({
             />
           </label>
         </FieldLabel>
+      </div>
+      <div className="rounded-2xl border border-[#cddcff] bg-[#eef4ff] p-4 text-sm font-semibold text-[#2f5edb]">
+        Auto follow-up preview:{" "}
+        {calculatedNextFollowupDate
+          ? `next contact is scheduled for ${calculatedNextFollowupDate}.`
+          : "add a first contact date to generate the first follow-up date."}
       </div>
       <FieldLabel label="Remarks" error={errors.remarks}>
         <textarea

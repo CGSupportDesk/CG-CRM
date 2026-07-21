@@ -83,13 +83,16 @@ export function Panel({
   children,
   className,
   dark = false,
+  id,
 }: {
   children: ReactNode;
   className?: string;
   dark?: boolean;
+  id?: string;
 }) {
   return (
     <section
+      id={id}
       className={cn(
         "min-w-0 rounded-[22px] border p-5 shadow-[0_18px_60px_rgba(22,44,55,0.08)]",
         dark
@@ -122,7 +125,7 @@ export function PageHeader({
           <p className="mt-2 text-sm leading-6 text-muted md:text-base">{description}</p>
         ) : null}
       </div>
-      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
+      {action ? <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">{action}</div> : null}
     </div>
   );
 }
@@ -165,7 +168,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "w-full rounded-[24px] border border-border bg-white p-5 shadow-[0_28px_90px_rgba(0,0,0,0.25)]",
+          "max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-[24px] border border-border bg-white p-4 shadow-[0_28px_90px_rgba(0,0,0,0.25)] sm:p-5",
           wide ? "max-w-5xl" : "max-w-2xl",
         )}
       >

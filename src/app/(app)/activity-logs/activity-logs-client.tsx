@@ -70,6 +70,13 @@ export function ActivityLogsClient() {
     );
   }
 
+  function clearFilters() {
+    setQuery("");
+    setAction("all");
+    setFromDate("");
+    setToDate("");
+  }
+
   if (loading) {
     return <EmptyState title="Loading activity logs" description="Preparing the full Growth Engine audit trail." />;
   }
@@ -167,13 +174,77 @@ export function ActivityLogsClient() {
           </FieldLabel>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="neutral">{filteredLogs.length} visible</Badge>
-          <Badge tone="info">{activityLogs.length} total logs</Badge>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="neutral">{filteredLogs.length} visible</Badge>
+            <Badge tone="info">{activityLogs.length} total logs</Badge>
+          </div>
+          <Button variant="secondary" size="sm" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          {filteredLogs.slice(0, 3).map((log) => {
+            const lead = leadById.get(log.leadId);
+            return (
+              <Link
+                key={`latest-${log.id}`}
+                href={lead ? `/leads/${lead.id}` : "/activity-logs"}
+                className="rounded-2xl border border-border bg-surface-soft p-4 transition hover:bg-white"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{log.action}</p>
+                    <p className="mt-1 truncate text-xs text-muted">
+                      {lead ? getDisplayName(lead) : log.leadId}
+                    </p>
+                  </div>
+                  <Badge tone="neutral">{log.createdBy || "captain"}</Badge>
+                </div>
+                <p className="mt-3 text-xs font-semibold text-muted">{formatDateTime(log.createdAt)}</p>
+              </Link>
+            );
+          })}
         </div>
 
         {filteredLogs.length ? (
-          <div className="overflow-hidden rounded-[20px] border border-border">
+          <div className="grid gap-3 lg:hidden">
+            {filteredLogs.map((log) => {
+              const lead = leadById.get(log.leadId);
+              return (
+                <article key={log.id} className="rounded-[20px] border border-border bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{log.action}</p>
+                      <p className="mt-1 text-xs text-muted">{formatDateTime(log.createdAt)}</p>
+                    </div>
+                    <Badge tone="neutral">{log.createdBy || "captain"}</Badge>
+                  </div>
+                  <div className="mt-3 rounded-2xl border border-border bg-surface-soft p-3">
+                    {lead ? (
+                      <Link href={`/leads/${lead.id}`} className="text-sm font-semibold hover:underline">
+                        {getDisplayName(lead)}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-semibold">{log.leadId}</p>
+                    )}
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-muted">
+                      {lead?.leadCode || log.leadId}
+                    </p>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-muted">
+                    {log.oldValue ? <span>{log.oldValue} -&gt; </span> : null}
+                    <span>{log.newValue || "No value"}</span>
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {filteredLogs.length ? (
+          <div className="hidden overflow-hidden rounded-[20px] border border-border lg:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">

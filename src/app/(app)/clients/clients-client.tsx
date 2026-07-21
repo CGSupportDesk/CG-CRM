@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { Edit3, Eye, MessageCircle, Plus, Trash2, Users } from "lucide-react";
+import { CalendarClock, CircleDollarSign, Edit3, Eye, MessageCircle, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { assigneeOptions, clientStatusOptions, paymentStatusOptions, serviceInterestOptions } from "@/lib/constants";
 import type { ClientStatus, PaymentStatus, StudioClient, StudioClientDraft } from "@/lib/types";
-import { formatCurrency, formatDate, getDisplayName, todayIso } from "@/lib/utils";
+import { formatCurrency, formatDate, getDisplayName, isOverdue, isToday, todayIso } from "@/lib/utils";
 
 export function ClientsClient() {
   const { clients, leads, projects, loading, saving, addClient, updateClient, deleteClient, logLeadActivity } = useCRM();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<ClientStatus | "all">("all");
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | "all">("all");
   const [editingClient, setEditingClient] = useState<StudioClient | null>(null);
   const [addingClient, setAddingClient] = useState(false);
   const [whatsappClient, setWhatsappClient] = useState<StudioClient | null>(null);
@@ -34,6 +35,7 @@ export function ClientsClient() {
     const text = query.trim().toLowerCase();
     return clients
       .filter((client) => status === "all" || client.status === status)
+      .filter((client) => paymentStatus === "all" || client.paymentStatus === paymentStatus)
       .filter((client) => {
         const haystack = [
           client.clientName,
@@ -43,8 +45,13 @@ export function ClientsClient() {
           client.packageName,
         ].join(" ").toLowerCase();
         return !text || haystack.includes(text);
-      });
-  }, [clients, query, status]);
+      })
+      .sort((a, b) => (a.renewalDate || "9999-12-31").localeCompare(b.renewalDate || "9999-12-31"));
+  }, [clients, paymentStatus, query, status]);
+  const renewalRiskClients = clients.filter(
+    (client) => client.status === "Renewal Due" || isToday(client.renewalDate) || isOverdue(client.renewalDate),
+  );
+  const overduePaymentClients = clients.filter((client) => client.paymentStatus === "Overdue");
 
   async function saveClient(draft: StudioClientDraft) {
     if (editingClient) {
@@ -90,8 +97,26 @@ export function ClientsClient() {
         />
       </div>
 
+      <Panel dark className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Client operations board</h2>
+            <p className="mt-1 text-sm leading-6 text-[#cad6dc]">
+              Watch renewals, payment risk, active packages, and project load from one client view.
+            </p>
+          </div>
+          <Badge tone="success">CG Studio</Badge>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ClientOpsCard icon={CalendarClock} label="Renewal attention" value={renewalRiskClients.length} detail="Due, overdue, or marked renewal" tone={renewalRiskClients.length ? "danger" : "success"} />
+          <ClientOpsCard icon={CircleDollarSign} label="Payment overdue" value={overduePaymentClients.length} detail="Clients needing collection" tone={overduePaymentClients.length ? "danger" : "success"} />
+          <ClientOpsCard icon={Users} label="Active accounts" value={clients.filter((client) => client.status === "Active").length} detail="Currently managed clients" tone="info" />
+          <ClientOpsCard icon={MessageCircle} label="WhatsApp ready" value={clients.filter((client) => client.phone).length} detail="Clients with phone numbers" tone="success" />
+        </div>
+      </Panel>
+
       <Panel className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_auto] md:items-end">
           <FieldLabel label="Search">
             <input
               className={inputClasses}
@@ -112,11 +137,36 @@ export function ClientsClient() {
               ))}
             </select>
           </FieldLabel>
+          <FieldLabel label="Payment">
+            <select
+              className={inputClasses}
+              value={paymentStatus}
+              onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus | "all")}
+            >
+              <option value="all">All</option>
+              {paymentStatusOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </FieldLabel>
           {saving ? <Badge tone="info">Saving...</Badge> : null}
         </div>
 
         {filteredClients.length ? (
-          <div className="overflow-hidden rounded-[20px] border border-border">
+          <div className="space-y-3">
+            <div className="grid gap-3 lg:hidden">
+              {filteredClients.map((client) => (
+                <ClientMobileCard
+                  key={client.id}
+                  client={client}
+                  projectCount={projectCountByClient[client.id] || 0}
+                  onWhatsapp={() => setWhatsappClient(client)}
+                  onEdit={() => setEditingClient(client)}
+                  onDelete={() => removeClient(client)}
+                />
+              ))}
+            </div>
+            <div className="hidden overflow-hidden rounded-[20px] border border-border lg:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1040px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
@@ -172,6 +222,7 @@ export function ClientsClient() {
               </table>
             </div>
           </div>
+          </div>
         ) : (
           <EmptyState
             title="No clients yet"
@@ -216,6 +267,102 @@ export function ClientsClient() {
           />
         </Modal>
       ) : null}
+    </div>
+  );
+}
+
+function ClientMobileCard({
+  client,
+  projectCount,
+  onWhatsapp,
+  onEdit,
+  onDelete,
+}: {
+  client: StudioClient;
+  projectCount: number;
+  onWhatsapp: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const renewalRisk = client.renewalDate && (isOverdue(client.renewalDate) || isToday(client.renewalDate));
+
+  return (
+    <article className="rounded-[20px] border border-border bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link href={`/clients/${client.id}`} className="block truncate text-base font-bold hover:underline">
+            {client.clientName}
+          </Link>
+          <p className="mt-1 truncate text-xs text-muted">
+            {client.contactPerson || "No contact"} - {client.phone || "No phone"}
+          </p>
+        </div>
+        <Badge>{client.status}</Badge>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniClientCell label="Package" value={client.packageName} />
+        <MiniClientCell label="Monthly" value={formatCurrency(client.monthlyValue)} />
+        <MiniClientCell label="Renewal" value={formatDate(client.renewalDate)} danger={Boolean(renewalRisk)} />
+        <MiniClientCell label="Projects" value={projectCount} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Badge>{client.paymentStatus}</Badge>
+        <Badge tone="neutral">{client.owner}</Badge>
+        <Button variant="secondary" size="icon" title="Send WhatsApp" onClick={onWhatsapp}>
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+        <Link href={`/clients/${client.id}`} className={buttonClasses("ghost", "icon")} title="Open client">
+          <Eye className="h-4 w-4" />
+        </Link>
+        <Button variant="ghost" size="icon" title="Edit client" onClick={onEdit}>
+          <Edit3 className="h-4 w-4" />
+        </Button>
+        <Button variant="danger" size="icon" title="Delete client" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function MiniClientCell({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: string | number;
+  danger?: boolean;
+}) {
+  return (
+    <div className={`rounded-2xl border p-3 ${danger ? "border-[#f7c7c7] bg-[#fff0f0]" : "border-border bg-surface-soft"}`}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-bold">{value}</p>
+    </div>
+  );
+}
+
+function ClientOpsCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: number;
+  detail: string;
+  tone: "success" | "danger" | "info";
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/8 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <Icon className="h-5 w-5 text-accent" />
+        <Badge tone={tone}>{value}</Badge>
+      </div>
+      <p className="mt-4 text-sm font-semibold text-white">{label}</p>
+      <p className="mt-1 text-xs leading-5 text-[#cad6dc]">{detail}</p>
     </div>
   );
 }

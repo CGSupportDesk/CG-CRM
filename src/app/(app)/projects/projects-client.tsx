@@ -1,12 +1,12 @@
 "use client";
 
-import { Edit3, FolderKanban, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Edit3, FolderKanban, Plus, Trash2, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { designerOptions, projectStatusOptions, projectTypeOptions } from "@/lib/constants";
 import type { ProjectStatus, ProjectType, StudioProject, StudioProjectDraft } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, isOverdue, isToday } from "@/lib/utils";
 
 export function ProjectsClient() {
   const { clients, projects, posterSlots, loading, saving, addProject, updateProject, deleteProject } = useCRM();
@@ -25,6 +25,16 @@ export function ProjectsClient() {
       }, {}),
     [posterSlots],
   );
+  const activeProjects = projects.filter((project) => !["Delivered", "On Hold"].includes(project.status));
+  const dueProjects = activeProjects.filter(
+    (project) => project.dueDate && (isToday(project.dueDate) || isOverdue(project.dueDate)),
+  );
+  const designerLoad = projects.reduce<Record<string, number>>((acc, project) => {
+    if (!["Delivered", "On Hold"].includes(project.status)) {
+      acc[project.designer || "Unassigned"] = (acc[project.designer || "Unassigned"] || 0) + 1;
+    }
+    return acc;
+  }, {});
   const filteredProjects = useMemo(() => {
     const text = query.trim().toLowerCase();
     return projects
@@ -79,6 +89,32 @@ export function ProjectsClient() {
         <ProjectMetric label="Delivered" value={projects.filter((project) => project.status === "Delivered").length} />
       </div>
 
+      <Panel dark className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Project operations board</h2>
+            <p className="mt-1 text-sm leading-6 text-[#cad6dc]">
+              Production health for poster packages, creatives, due dates, and designer ownership.
+            </p>
+          </div>
+          <Badge tone={dueProjects.length ? "danger" : "success"}>
+            {dueProjects.length ? `${dueProjects.length} due` : "On track"}
+          </Badge>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <ProjectOpsCard icon={FolderKanban} label="Active projects" value={activeProjects.length} detail="Not delivered or on hold" />
+          <ProjectOpsCard icon={CalendarClock} label="Due attention" value={dueProjects.length} detail="Due today or overdue" danger={dueProjects.length > 0} />
+          <ProjectOpsCard icon={UserRound} label="Assigned designers" value={Object.keys(designerLoad).length} detail="With active project load" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(designerLoad).map(([designer, count]) => (
+            <Badge key={designer} tone="info">
+              {designer}: {count}
+            </Badge>
+          ))}
+        </div>
+      </Panel>
+
       <Panel className="space-y-5">
         <div className="grid gap-3 md:grid-cols-[1fr_220px_220px_auto] md:items-end">
           <FieldLabel label="Search">
@@ -100,7 +136,20 @@ export function ProjectsClient() {
         </div>
 
         {filteredProjects.length ? (
-          <div className="overflow-hidden rounded-[20px] border border-border">
+          <div className="space-y-3">
+            <div className="grid gap-3 lg:hidden">
+              {filteredProjects.map((project) => (
+                <ProjectMobileCard
+                  key={project.id}
+                  project={project}
+                  clientName={clientById.get(project.clientId)?.clientName || "Unknown client"}
+                  slotCount={slotsByProject[project.id] || 0}
+                  onEdit={() => setEditingProject(project)}
+                  onDelete={() => removeProject(project)}
+                />
+              ))}
+            </div>
+            <div className="hidden overflow-hidden rounded-[20px] border border-border lg:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
@@ -145,6 +194,7 @@ export function ProjectsClient() {
               </table>
             </div>
           </div>
+          </div>
         ) : (
           <EmptyState
             title={clients.length ? "No projects yet" : "No clients yet"}
@@ -175,6 +225,102 @@ export function ProjectsClient() {
           />
         </Modal>
       ) : null}
+    </div>
+  );
+}
+
+function ProjectMobileCard({
+  project,
+  clientName,
+  slotCount,
+  onEdit,
+  onDelete,
+}: {
+  project: StudioProject;
+  clientName: string;
+  slotCount: number;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const target = project.monthlyPosterTarget || slotCount || 0;
+  const completed = Math.min(project.postersCompleted || 0, target || 0);
+  const progress = target ? Math.round((completed / target) * 100) : 0;
+  const dueRisk = project.dueDate && project.status !== "Delivered" && (isToday(project.dueDate) || isOverdue(project.dueDate));
+
+  return (
+    <article className="rounded-[20px] border border-border bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-base font-bold">{project.projectName}</p>
+          <p className="mt-1 truncate text-xs text-muted">{clientName} - {project.projectType}</p>
+        </div>
+        <Badge>{project.status}</Badge>
+      </div>
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-muted">
+          <span>Poster progress</span>
+          <span>{completed}/{target || 0}</span>
+        </div>
+        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#e8f0f4]">
+          <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(progress, target ? 8 : 0)}%` }} />
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniProjectCell label="Designer" value={project.designer || "Unassigned"} />
+        <MiniProjectCell label="Due" value={formatDate(project.dueDate)} danger={Boolean(dueRisk)} />
+        <MiniProjectCell label="Slots" value={slotCount} />
+        <MiniProjectCell label="Target" value={target || 0} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="ghost" size="icon" onClick={onEdit} title="Edit project">
+          <Edit3 className="h-4 w-4" />
+        </Button>
+        <Button variant="danger" size="icon" onClick={onDelete} title="Delete project">
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function MiniProjectCell({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: string | number;
+  danger?: boolean;
+}) {
+  return (
+    <div className={`rounded-2xl border p-3 ${danger ? "border-[#f7c7c7] bg-[#fff0f0]" : "border-border bg-surface-soft"}`}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-bold">{value}</p>
+    </div>
+  );
+}
+
+function ProjectOpsCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  danger = false,
+}: {
+  icon: typeof FolderKanban;
+  label: string;
+  value: number;
+  detail: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/8 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <Icon className="h-5 w-5 text-accent" />
+        <Badge tone={danger ? "danger" : "info"}>{value}</Badge>
+      </div>
+      <p className="mt-4 text-sm font-semibold text-white">{label}</p>
+      <p className="mt-1 text-xs leading-5 text-[#cad6dc]">{detail}</p>
     </div>
   );
 }

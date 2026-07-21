@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, Download, ShieldCheck, Target, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, Download, ShieldCheck, Target, Wrench } from "lucide-react";
 import { BarList } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, PageHeader, Panel } from "@/components/ui";
@@ -79,6 +79,35 @@ export function DataQualityClient() {
         <QualityMetric icon={AlertTriangle} label="Critical Issues" value={criticalIssues} tone={criticalIssues ? "danger" : "success"} />
         <QualityMetric icon={Wrench} label="Issue Types" value={Object.values(report.issueCounts).filter((count) => count > 0).length} />
       </div>
+
+      <Panel dark className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <Badge tone={criticalIssues ? "danger" : "success"}>
+              {criticalIssues ? "Needs cleanup" : "Clean"}
+            </Badge>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-white">
+              Cleanup action plan
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#cad6dc]">
+              Work from duplicates to missing follow-up dates. That protects the daily sales queue first.
+            </p>
+          </div>
+          <Link
+            href="/leads"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/15"
+          >
+            Open Lead Table
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <CleanupStep step="1" label="Merge duplicate phone leads" value={report.duplicatePhones.length} />
+          <CleanupStep step="2" label="Merge duplicate URL leads" value={report.duplicateUrls.length} />
+          <CleanupStep step="3" label="Add next follow-up dates" value={report.missingNextFollowupDate.length} />
+          <CleanupStep step="4" label="Add mandatory remarks" value={report.missingRemarks.length} />
+        </div>
+      </Panel>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel>
@@ -196,6 +225,28 @@ function MiniIssue({ label, value }: { label: string; value: number }) {
     <div className="rounded-2xl border border-border bg-surface-soft p-4">
       <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-2 font-mono text-3xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function CleanupStep({
+  step,
+  label,
+  value,
+}: {
+  step: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/8 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-xs font-black text-surface-strong">
+          {step}
+        </span>
+        <Badge tone={value ? "danger" : "success"}>{value}</Badge>
+      </div>
+      <p className="mt-4 text-sm font-semibold text-white">{label}</p>
     </div>
   );
 }
