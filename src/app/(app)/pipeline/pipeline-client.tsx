@@ -1,26 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Flame, IndianRupee, ListChecks, Target } from "lucide-react";
-import { useMemo } from "react";
+import { ArrowRight, Flame, IndianRupee, ListChecks, Search, Target } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, EmptyState, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
 import { getLeadScores, leadScoreDistribution } from "@/lib/analytics";
-import { leadStageOptions } from "@/lib/constants";
+import { leadStageOptions, leadTemperatureOptions } from "@/lib/constants";
 import type { Lead, LeadStage } from "@/lib/types";
 import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
 export function PipelineClient() {
   const { leads, followups, loading, updateLead } = useCRM();
+  const [query, setQuery] = useState("");
+  const [temperatureFilter, setTemperatureFilter] = useState("all");
   const scores = useMemo(() => getLeadScores(leads, followups), [followups, leads]);
   const scoreByLeadId = useMemo(
     () => new Map(scores.map((score) => [score.lead.id, score])),
     [scores],
   );
   const distribution = leadScoreDistribution(scores);
+  const filteredPipelineLeads = useMemo(() => {
+    const text = query.trim().toLowerCase();
+
+    return leads
+      .filter((lead) => !lead.isArchived)
+      .filter((lead) => temperatureFilter === "all" || lead.leadTemperature === temperatureFilter)
+      .filter((lead) => {
+        if (!text) return true;
+        return [
+          getDisplayName(lead),
+          lead.leadCode,
+          lead.phone,
+          lead.leadUrl,
+          lead.remarks,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(text);
+      });
+  }, [leads, query, temperatureFilter]);
   const columns = leadStageOptions.map((stage) => {
-    const stageLeads = leads
-      .filter((lead) => !lead.isArchived && lead.leadStage === stage)
+    const stageLeads = filteredPipelineLeads
+      .filter((lead) => lead.leadStage === stage)
       .sort((a, b) => (scoreByLeadId.get(b.id)?.score || 0) - (scoreByLeadId.get(a.id)?.score || 0));
 
     return {
@@ -68,10 +90,50 @@ export function PipelineClient() {
           <div>
             <h2 className="text-xl font-semibold">Kanban by stage</h2>
             <p className="mt-1 text-sm text-muted">
-              Use the stage selector inside a card to move a lead. Won leads automatically become clients.
+              Search, filter, and use the next-stage action inside a card to move leads faster.
             </p>
           </div>
-          <Badge tone="neutral">{leadStageOptions.length} stages</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="neutral">{leadStageOptions.length} stages</Badge>
+            <Badge tone="info">{filteredPipelineLeads.length} visible</Badge>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-end">
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              Search Pipeline
+            </span>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                className={`${inputClasses} pl-10`}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Lead, phone, code, URL"
+              />
+            </div>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              Temperature
+            </span>
+            <select
+              className={inputClasses}
+              value={temperatureFilter}
+              onChange={(event) => setTemperatureFilter(event.target.value)}
+            >
+              <option value="all">All temperatures</option>
+              {leadTemperatureOptions.map((temperature) => (
+                <option key={temperature} value={temperature}>
+                  {temperature}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Link href="/leads" className={buttonClasses("secondary")}>
+            Lead Table
+          </Link>
         </div>
 
         <div className="-mx-2 overflow-x-auto px-2 pb-2">
@@ -98,6 +160,7 @@ export function PipelineClient() {
                         score={scoreByLeadId.get(lead.id)?.score || 0}
                         reasons={scoreByLeadId.get(lead.id)?.reasons || []}
                         onStageChange={(stage) => void updateLead(lead.id, { leadStage: stage })}
+                        onMoveNext={(stage) => void updateLead(lead.id, { leadStage: stage })}
                       />
                     ))
                   ) : (
@@ -120,12 +183,15 @@ function PipelineCard({
   score,
   reasons,
   onStageChange,
+  onMoveNext,
 }: {
   lead: Lead;
   score: number;
   reasons: string[];
   onStageChange: (stage: LeadStage) => void;
+  onMoveNext: (stage: LeadStage) => void;
 }) {
+  const nextStage = getNextLeadStage(lead.leadStage);
   const followupTone = isOverdue(lead.nextFollowupDate)
     ? "danger"
     : isToday(lead.nextFollowupDate)
@@ -158,6 +224,16 @@ function PipelineCard({
           </option>
         ))}
       </select>
+      {nextStage ? (
+        <button
+          type="button"
+          className="mt-2 inline-flex min-h-8 w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-soft px-3 text-xs font-semibold text-accent-dark transition hover:border-[#c2d1d8] hover:bg-white"
+          onClick={() => onMoveNext(nextStage)}
+        >
+          Move to {nextStage}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
       <div className="mt-3 space-y-1">
         {reasons.slice(0, 3).map((reason) => (
           <p key={reason} className="truncate text-xs text-muted">
@@ -167,6 +243,18 @@ function PipelineCard({
       </div>
     </article>
   );
+}
+
+function getNextLeadStage(stage: LeadStage): LeadStage | "" {
+  const terminalStages: LeadStage[] = ["Won", "Lost", "Rejected"];
+  if (terminalStages.includes(stage)) return "";
+
+  const index = leadStageOptions.indexOf(stage);
+  const nextStage = leadStageOptions[index + 1];
+  if (!nextStage || nextStage === "Lost" || nextStage === "Rejected" || nextStage === "No Response") {
+    return "";
+  }
+  return nextStage;
 }
 
 function PipelineMetric({

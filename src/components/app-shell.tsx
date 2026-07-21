@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
+import { GlobalSearch } from "@/components/global-search";
 import { Badge, Button } from "@/components/ui";
 import { cgStudioModules, primaryModules, wingCards } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -77,6 +78,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <BrandLogo variant="dark" className="h-14 max-w-[190px]" />
           <span className="text-xs font-semibold text-muted">CG Studio active</span>
         </Link>
+
+        <div className="mt-5 px-1">
+          <GlobalSearch compact />
+        </div>
 
         <nav className="mt-7 flex flex-1 flex-col gap-6 overflow-y-auto pr-1">
           <SidebarSection>
@@ -160,6 +165,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="truncate text-sm font-bold text-foreground">{currentModule}</p>
           </div>
           <Badge tone="success">CG Studio</Badge>
+        </div>
+        <div className="mt-3">
+          <GlobalSearch compact />
         </div>
       </header>
 

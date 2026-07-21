@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, ArrowLeft, CheckCircle2, Edit3, MessageCircle, Phone, Plus, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Archive, ArrowLeft, CalendarClock, CheckCircle2, Edit3, MessageCircle, Phone, Plus, Sparkles, UserRound, XCircle } from "lucide-react";
+import { useMemo, useState, type ComponentType } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { FollowupForm } from "@/components/followup-form";
 import { LeadForm } from "@/components/lead-form";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { leadStageOptions, leadTemperatureOptions } from "@/lib/constants";
-import { formatFollowupDelay, getWorkingDayDelta } from "@/lib/followup-schedule";
+import { buildLeadContactTimeline, formatFollowupDelay, getWorkingDayDelta, type LeadContactTimelineItem } from "@/lib/followup-schedule";
 import type { FollowupDraft, LeadDraft, LeadStage, LeadTemperature } from "@/lib/types";
 import { formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue } from "@/lib/utils";
 
@@ -42,6 +42,10 @@ export function LeadDetailClient({ id }: { id: string }) {
         .filter((log) => log.leadId === id)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [activityLogs, id],
+  );
+  const contactTimeline = useMemo(
+    () => buildLeadContactTimeline(lead?.firstContactDate || "", leadFollowups),
+    [lead?.firstContactDate, leadFollowups],
   );
 
   if (loading) {
@@ -98,6 +102,18 @@ export function LeadDetailClient({ id }: { id: string }) {
           </>
         }
       />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <LeadSnapshotMetric label="Lead ID" value={lead.leadCode} icon={TargetIcon} />
+        <LeadSnapshotMetric label="Created" value={formatDate(lead.createdAt.slice(0, 10))} icon={CalendarClock} />
+        <LeadSnapshotMetric label="Owner" value={lead.assignedTo || "Naveen"} icon={UserRound} />
+        <LeadSnapshotMetric label="Source" value={lead.source || "Not set"} icon={MessageCircle} />
+        <LeadSnapshotMetric
+          label="Sample"
+          value={lead.samplePosterSent ? formatDate(lead.samplePosterSentAt.slice(0, 10), "Sent") : "Not sent"}
+          icon={Sparkles}
+        />
+      </div>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel dark className="space-y-5">
@@ -203,6 +219,8 @@ export function LeadDetailClient({ id }: { id: string }) {
         </Panel>
       </div>
 
+      <ContactPlanPanel timeline={contactTimeline} />
+
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel>
           <div className="flex items-center justify-between gap-3">
@@ -292,6 +310,87 @@ export function LeadDetailClient({ id }: { id: string }) {
         </Modal>
       ) : null}
     </div>
+  );
+}
+
+function TargetIcon({ className }: { className?: string }) {
+  return <span className={className}>GE</span>;
+}
+
+function LeadSnapshotMetric({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Panel className="p-4">
+      <div className="flex items-center gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-soft text-xs font-black text-accent-dark">
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted">{label}</p>
+          <p className="mt-1 truncate text-sm font-bold">{value || "Not set"}</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ContactPlanPanel({ timeline }: { timeline: LeadContactTimelineItem[] }) {
+  return (
+    <Panel className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold">Contact plan</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Scheduled dates, actual dates, and delay status from the automatic follow-up logic.
+          </p>
+        </div>
+        <Badge tone="neutral">{timeline.length} steps</Badge>
+      </div>
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {timeline.map((item) => {
+          const completed = item.kind === "contact" || Boolean(item.completedFollowup);
+          const delayText =
+            item.kind === "followup" && completed
+              ? formatFollowupDelay(item.delayWorkingDays)
+              : item.date
+                ? "Pending"
+                : "No date";
+
+          return (
+            <div
+              key={item.label}
+              className="rounded-2xl border border-border bg-surface-soft p-3"
+              title={item.kind === "followup" ? item.completedFollowup?.remarks || "" : ""}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">{item.label}</p>
+                <Badge tone={completed ? "success" : item.date ? "info" : "muted"}>
+                  {completed ? "Done" : "Open"}
+                </Badge>
+              </div>
+              <p className="mt-3 text-sm font-bold">{formatDate(item.date, "No date")}</p>
+              {item.kind === "followup" ? (
+                <>
+                  <p className="mt-1 text-xs text-muted">
+                    Actual: {formatDate(item.actualDate || "", "Pending")}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-muted">{delayText}</p>
+                </>
+              ) : (
+                <p className="mt-1 text-xs text-muted">First contact date</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
   );
 }
 

@@ -37,10 +37,14 @@ type SalesQueueItem = {
   latestFollowup: Followup | null;
 };
 
+type SalesQueueKey = "today" | "overdue" | "hot" | "no-response";
+type SalesQueueTone = "success" | "danger" | "hot" | "muted";
+
 export function DailySalesClient() {
   const { leads, followups, activityLogs, loading, addFollowup, logLeadActivity } = useCRM();
   const [followupLeadId, setFollowupLeadId] = useState<string | null>(null);
   const [whatsappLead, setWhatsappLead] = useState<Lead | null>(null);
+  const [focusQueue, setFocusQueue] = useState<SalesQueueKey>("today");
   const latestFollowupByLead = useMemo(() => buildLatestFollowupMap(followups), [followups]);
   const tasks = useMemo(() => getFollowupTasks(leads, followups), [followups, leads]);
   const activeOpenLeads = useMemo(() => openLeads(leads), [leads]);
@@ -67,6 +71,43 @@ export function DailySalesClient() {
     .filter((lead) => lead.leadStage === "No Response")
     .sort(compareSalesPriority)
     .map((lead) => ({ lead, latestFollowup: latestFollowupByLead.get(lead.id) || null }));
+  const commandQueues = [
+    {
+      key: "today",
+      title: "Today's Calls",
+      description: "Start here. These leads are due today.",
+      tone: "success",
+      items: todaysCalls,
+    },
+    {
+      key: "overdue",
+      title: "Overdue",
+      description: "Recover delayed follow-ups before they turn cold.",
+      tone: "danger",
+      items: overdue,
+    },
+    {
+      key: "hot",
+      title: "Hot Leads",
+      description: "Move high-interest leads toward details, proposal, or win.",
+      tone: "hot",
+      items: hotLeads,
+    },
+    {
+      key: "no-response",
+      title: "No Response",
+      description: "Use recovery templates and log every attempt.",
+      tone: "muted",
+      items: noResponseLeads,
+    },
+  ] satisfies Array<{
+    key: SalesQueueKey;
+    title: string;
+    description: string;
+    tone: SalesQueueTone;
+    items: SalesQueueItem[];
+  }>;
+  const activeCommandQueue = commandQueues.find((queue) => queue.key === focusQueue) || commandQueues[0];
 
   async function submitFollowup(draft: FollowupDraft) {
     await addFollowup(draft);
@@ -134,6 +175,15 @@ export function DailySalesClient() {
         <DailyMetric icon={Flame} label="Hot Leads" value={hotLeads.length} tone="hot" />
         <DailyMetric icon={MessageCircle} label="No Response" value={noResponseLeads.length} tone="muted" />
       </div>
+
+      <FocusQueuePanel
+        queues={commandQueues}
+        activeKey={focusQueue}
+        activeQueue={activeCommandQueue}
+        onSelect={setFocusQueue}
+        onLog={setFollowupLeadId}
+        onWhatsApp={setWhatsappLead}
+      />
 
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <LeadScoreQueue scores={priorityScores} onLog={setFollowupLeadId} onWhatsApp={setWhatsappLead} />
@@ -216,6 +266,119 @@ export function DailySalesClient() {
         </Modal>
       ) : null}
     </div>
+  );
+}
+
+function FocusQueuePanel({
+  queues,
+  activeKey,
+  activeQueue,
+  onSelect,
+  onLog,
+  onWhatsApp,
+}: {
+  queues: Array<{
+    key: SalesQueueKey;
+    title: string;
+    description: string;
+    tone: SalesQueueTone;
+    items: SalesQueueItem[];
+  }>;
+  activeKey: SalesQueueKey;
+  activeQueue: {
+    key: SalesQueueKey;
+    title: string;
+    description: string;
+    tone: SalesQueueTone;
+    items: SalesQueueItem[];
+  };
+  onSelect: (key: SalesQueueKey) => void;
+  onLog: (leadId: string) => void;
+  onWhatsApp: (lead: Lead) => void;
+}) {
+  return (
+    <Panel className="space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Daily command center</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Pick one queue, work it down, and log the result immediately.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          {queues.map((queue) => (
+            <Button
+              key={queue.key}
+              variant={activeKey === queue.key ? "dark" : "secondary"}
+              size="sm"
+              onClick={() => onSelect(queue.key)}
+            >
+              {queue.title}
+              <Badge tone={queue.tone}>{queue.items.length}</Badge>
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[18px] border border-border bg-surface-soft p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">{activeQueue.title}</h3>
+            <p className="mt-1 text-sm text-muted">{activeQueue.description}</p>
+          </div>
+          <Badge tone={activeQueue.tone}>{activeQueue.items.length} leads</Badge>
+        </div>
+
+        {activeQueue.items.length ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {activeQueue.items.slice(0, 8).map(({ lead, latestFollowup }) => (
+              <div key={lead.id} className="rounded-2xl border border-border bg-white p-3">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={`/leads/${lead.id}`} className="block truncate font-semibold hover:underline">
+                      {getDisplayName(lead)}
+                    </Link>
+                    <p className="mt-1 truncate text-xs text-muted">
+                      {lead.leadCode} - Created {formatDate(lead.createdAt.slice(0, 10))}
+                    </p>
+                  </div>
+                  <Badge>{lead.leadTemperature}</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-muted sm:grid-cols-2">
+                  <p>
+                    Next{" "}
+                    <span className="font-semibold text-foreground">
+                      {formatDate(lead.nextFollowupDate, "No date")}
+                    </span>
+                  </p>
+                  <p>
+                    Last{" "}
+                    <span className="font-semibold text-foreground">
+                      {latestFollowup?.outcome || lead.leadStage}
+                    </span>
+                  </p>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => onWhatsApp(lead)}>
+                    <MessageCircle className="h-4 w-4" />
+                    WhatsApp
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => onLog(lead.id)}>
+                    <CalendarPlus className="h-4 w-4" />
+                    Log
+                  </Button>
+                  <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "sm")}>
+                    Open
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="Queue clear" description="No lead currently needs this action." />
+        )}
+      </div>
+    </Panel>
   );
 }
 

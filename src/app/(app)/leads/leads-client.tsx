@@ -283,7 +283,25 @@ export function LeadsClient() {
         </div>
 
         {filteredLeads.length ? (
-          <div className="overflow-hidden rounded-[20px] border border-border">
+          <div className="space-y-3">
+            <div className="grid gap-3 lg:hidden">
+              {filteredLeads.map((lead) => (
+                <MobileLeadCard
+                  key={lead.id}
+                  lead={lead}
+                  followups={followupsByLeadId.get(lead.id) || []}
+                  saving={saving}
+                  onMark={(item) => setMarkingFollowup({ lead, item })}
+                  onWhatsapp={() => setWhatsappLead(lead)}
+                  onEdit={() => setEditingLead(lead)}
+                  onArchive={() => void archiveLead(lead.id)}
+                  onDelete={() => removeLead(lead)}
+                  onUpdate={(changes) => updateLead(lead.id, changes)}
+                />
+              ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-[20px] border border-border lg:block">
               <table className="w-full table-fixed text-left text-sm">
                 <thead className="bg-surface-strong text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
                   <tr>
@@ -427,6 +445,7 @@ export function LeadsClient() {
                   ))}
                 </tbody>
               </table>
+            </div>
           </div>
         ) : (
           <EmptyState
@@ -483,6 +502,136 @@ export function LeadsClient() {
         </Modal>
       ) : null}
     </div>
+  );
+}
+
+function MobileLeadCard({
+  lead,
+  followups,
+  saving,
+  onMark,
+  onWhatsapp,
+  onEdit,
+  onArchive,
+  onDelete,
+  onUpdate,
+}: {
+  lead: Lead;
+  followups: Followup[];
+  saving: boolean;
+  onMark: (item: Extract<LeadContactTimelineItem, { kind: "followup" }>) => void;
+  onWhatsapp: () => void;
+  onEdit: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  onUpdate: (changes: Partial<LeadDraft>) => Promise<void> | void;
+}) {
+  return (
+    <article className={cn("rounded-[20px] border border-border bg-white p-4", lead.isArchived && "opacity-60")}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link href={`/leads/${lead.id}`} className="block truncate text-base font-bold hover:underline">
+            {getDisplayName(lead)}
+          </Link>
+          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-muted">
+            {lead.leadCode}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted" title={lead.leadUrl || lead.industry || "No URL"}>
+            {lead.leadUrl || lead.industry || "No URL"}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Badge>{lead.leadTemperature}</Badge>
+          <Badge>{lead.leadStage}</Badge>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-2xl border border-border bg-surface-soft p-3">
+          <p className="font-bold uppercase tracking-[0.08em] text-muted">Phone</p>
+          <InlineTextField
+            value={lead.phone}
+            placeholder="Unavailable"
+            title="Update phone"
+            onSave={(value) => onUpdate({ phone: value })}
+          />
+        </div>
+        <div className="rounded-2xl border border-border bg-surface-soft p-3">
+          <p className="font-bold uppercase tracking-[0.08em] text-muted">Value</p>
+          <p className="mt-2 font-mono text-sm font-bold">{formatCurrency(lead.expectedValue)}</p>
+          <p className="mt-1 truncate font-semibold text-muted">{lead.serviceInterest}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <InlineSelect<LeadTemperature>
+          value={lead.leadTemperature}
+          options={leadTemperatureOptions}
+          onChange={(value) => onUpdate({ leadTemperature: value })}
+        />
+        <InlineSelect<LeadStage>
+          value={lead.leadStage}
+          options={leadStageOptions}
+          onChange={(value) => onUpdate({ leadStage: value })}
+        />
+      </div>
+
+      <div className="mt-3">
+        <LeadContactChecklist lead={lead} followups={followups} onMark={onMark} />
+      </div>
+
+      <div className="mt-3">
+        <InlineTextField
+          value={lead.remarks}
+          placeholder="Add remark"
+          title="Update remarks"
+          onSave={(value) => {
+            const remarks = value.trim();
+            if (!remarks) {
+              window.alert("Remarks are mandatory before saving.");
+              return;
+            }
+            return onUpdate({ remarks });
+          }}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-surface-soft px-3 text-xs font-bold text-muted">
+          <input
+            type="checkbox"
+            checked={lead.samplePosterSent}
+            disabled={saving}
+            onChange={(event) =>
+              void onUpdate({
+                samplePosterSent: event.target.checked,
+                samplePosterSentAt: event.target.checked
+                  ? lead.samplePosterSentAt || new Date().toISOString()
+                  : "",
+              })
+            }
+          />
+          Sample
+        </label>
+        <Button variant="secondary" size="icon" title="Send WhatsApp" onClick={onWhatsapp}>
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+        <Link href={`/leads/${lead.id}`} className={buttonClasses("ghost", "icon")} title="Open lead">
+          <Eye className="h-4 w-4" />
+        </Link>
+        {!lead.isArchived ? (
+          <Button variant="ghost" size="icon" title="Archive lead" onClick={onArchive}>
+            <Archive className="h-4 w-4" />
+          </Button>
+        ) : null}
+        <Button variant="ghost" size="icon" title="Full edit" onClick={onEdit}>
+          <Edit3 className="h-4 w-4" />
+        </Button>
+        <Button variant="danger" size="icon" title="Delete lead" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </article>
   );
 }
 

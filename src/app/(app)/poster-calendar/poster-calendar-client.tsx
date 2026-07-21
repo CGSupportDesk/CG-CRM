@@ -154,7 +154,7 @@ export function PosterCalendarClient() {
       />
 
       <Panel className="space-y-5">
-        <div className="grid gap-3 lg:grid-cols-[180px_240px_1fr_auto_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[180px_220px_1fr_auto_auto_auto] lg:items-end">
           <FieldLabel label="Month">
             <input className={inputClasses} type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
           </FieldLabel>
@@ -177,6 +177,9 @@ export function PosterCalendarClient() {
               ))}
             </select>
           </FieldLabel>
+          <Button variant="secondary" onClick={() => setMonth(todayIso().slice(0, 7))}>
+            This Month
+          </Button>
           <Button onClick={generateSlots} disabled={!selectedProjectId || saving}>
             <Sparkles className="h-4 w-4" />
             Generate Slots
@@ -219,10 +222,15 @@ export function PosterCalendarClient() {
               Full month view with every date visible, including empty 31st days.
             </p>
           </div>
-          <Badge tone="neutral">{formatCalendarMonth(month)}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <CalendarLegend label="Posted" className="border-[#b8ead6] bg-[#eafaf3]" />
+            <CalendarLegend label="Missed" className="border-[#f7c7c7] bg-[#fff0f0]" />
+            <CalendarLegend label="Today" className="border-[#b8ead6] bg-[#f4fcf8]" />
+            <Badge tone="neutral">{formatCalendarMonth(month)}</Badge>
+          </div>
         </div>
         <div className="overflow-x-auto pb-1">
-          <div className="min-w-[920px]">
+          <div className="min-w-[760px] sm:min-w-[920px]">
             <div className="grid grid-cols-7 gap-2">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                 <div key={day} className="rounded-xl bg-surface-strong px-3 py-2 text-center text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
@@ -572,6 +580,15 @@ function CalendarMetric({ label, value }: { label: string; value: string | numbe
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-2 font-mono text-3xl font-bold tracking-tight">{value}</p>
     </Panel>
+  );
+}
+
+function CalendarLegend({ label, className }: { label: string; className: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted">
+      <span className={cn("h-3 w-3 rounded-full border", className)} />
+      {label}
+    </span>
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarClock, CheckSquare, Flame, FolderKanban, IndianRupee, Target, TrendingUp, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckSquare, Flame, FolderKanban, IndianRupee, MessageCircle, Target, TrendingUp, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { DailyBriefPanel } from "@/components/ai-panels";
 import { BarList, DonutChart, Sparkline } from "@/components/charts";
@@ -19,15 +19,25 @@ import {
   leadTemperatureChart,
   objectionChart,
 } from "@/lib/analytics";
-import { formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue, isToday } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, getDisplayName, isOverdue, isToday, todayIso } from "@/lib/utils";
 
 export function DashboardClient() {
   const { leads, followups, activityLogs, clients, projects, posterSlots, loading } = useCRM();
   const kpis = getKpis(leads);
   const operationsKpis = getOperationsKpis(clients, projects, posterSlots);
   const followupTasks = getFollowupTasks(leads, followups);
+  const openLeadItems = activeLeads(leads).filter(
+    (lead) => !["Won", "Lost", "Rejected"].includes(lead.leadStage),
+  );
   const todaysFollowups = followupTasks.filter(({ lead }) => isToday(lead.nextFollowupDate));
   const overdueFollowups = followupTasks.filter(({ lead }) => isOverdue(lead.nextFollowupDate));
+  const noDateLeads = openLeadItems.filter((lead) => !lead.nextFollowupDate);
+  const missedPosterSlots = posterSlots.filter(
+    (slot) => slot.slotDate < todayIso() && slot.status !== "Posted",
+  );
+  const renewalClients = clients.filter(
+    (client) => client.status === "Renewal Due" || isOverdue(client.renewalDate) || isToday(client.renewalDate),
+  );
   const hotLeadsNeedingAction = activeLeads(leads)
     .filter((lead) => lead.leadTemperature === "Hot")
     .filter((lead) => !["Won", "Lost", "Rejected"].includes(lead.leadStage))
@@ -47,7 +57,7 @@ export function DashboardClient() {
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description="CG Studio is active. Track leads, follow-ups, reports, and CSV imports from one command center."
+        description="CG Studio is active. Start with the action queues, then review sales and operations health."
         action={
           <Link href="/leads" className={buttonClasses("primary")}>
             Open Leads
@@ -55,6 +65,82 @@ export function DashboardClient() {
           </Link>
         }
       />
+
+      <Panel dark className="overflow-hidden p-0">
+        <div className="grid gap-0 lg:grid-cols-[1fr_1.4fr]">
+          <div className="border-b border-white/10 p-5 lg:border-b-0 lg:border-r">
+            <Badge tone="success">Action Center</Badge>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-white">
+              Today&apos;s growth desk
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#cad6dc]">
+              A quick read of calls, recoveries, no-date leads, and CG Studio delivery risks.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link href="/daily-sales" className={buttonClasses("primary", "sm")}>
+                Daily Sales
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link href="/pipeline" className={buttonClasses("secondary", "sm")}>
+                Pipeline
+              </Link>
+              <Link href="/poster-calendar" className={buttonClasses("secondary", "sm")}>
+                Calendar
+              </Link>
+            </div>
+          </div>
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            <ActionQueueCard
+              href="/daily-sales"
+              icon={CalendarClock}
+              label="Today Calls"
+              value={todaysFollowups.length}
+              detail="Follow-ups due today"
+              tone="success"
+            />
+            <ActionQueueCard
+              href="/daily-sales"
+              icon={AlertTriangle}
+              label="Overdue"
+              value={overdueFollowups.length}
+              detail="Past promised dates"
+              tone="danger"
+            />
+            <ActionQueueCard
+              href="/daily-sales"
+              icon={Flame}
+              label="Hot Action"
+              value={hotLeadsNeedingAction.length}
+              detail="Hot leads needing movement"
+              tone="hot"
+            />
+            <ActionQueueCard
+              href="/leads"
+              icon={Target}
+              label="No Date"
+              value={noDateLeads.length}
+              detail="Open leads missing next date"
+              tone="info"
+            />
+            <ActionQueueCard
+              href="/poster-calendar"
+              icon={CheckSquare}
+              label="Missed Posters"
+              value={missedPosterSlots.length}
+              detail="Past slots not posted"
+              tone="danger"
+            />
+            <ActionQueueCard
+              href="/clients"
+              icon={Users}
+              label="Renewals"
+              value={renewalClients.length}
+              detail="Due or marked renewal"
+              tone="warm"
+            />
+          </div>
+        </div>
+      </Panel>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard label="Total Leads" value={kpis.totalLeads} icon={Target} />
@@ -121,7 +207,13 @@ export function DashboardClient() {
                       {latestFollowup?.outcome || lead.leadStage} - {lead.assignedTo || DEFAULT_ASSIGNEE}
                     </p>
                   </div>
-                  <Badge>{lead.leadTemperature}</Badge>
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    <Badge>{lead.leadTemperature}</Badge>
+                    <Badge tone="info">
+                      <MessageCircle className="h-3 w-3" />
+                      Open
+                    </Badge>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -297,6 +389,38 @@ function MiniStat({ label, value }: { label: string; value: string | number }) {
       <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-2 font-mono text-2xl font-bold">{value}</p>
     </div>
+  );
+}
+
+function ActionQueueCard({
+  href,
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  detail: string;
+  tone: "success" | "danger" | "hot" | "info" | "warm";
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-[18px] border border-white/10 bg-white/8 p-4 transition hover:bg-white/12"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-accent">
+          <Icon className="h-4 w-4" />
+        </span>
+        <Badge tone={tone}>{value}</Badge>
+      </div>
+      <p className="mt-4 text-xs font-bold uppercase tracking-[0.08em] text-[#aebcc4]">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{detail}</p>
+    </Link>
   );
 }
 
