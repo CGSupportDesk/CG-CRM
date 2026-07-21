@@ -10,10 +10,23 @@ import { leadStageOptions, leadTemperatureOptions } from "@/lib/constants";
 import type { Lead, LeadStage } from "@/lib/types";
 import { cn, formatCurrency, formatDate, getDisplayName, isOverdue, isToday } from "@/lib/utils";
 
+type StageView = "active" | "closed" | "all";
+
+const activeStageOptions: LeadStage[] = [
+  "New Lead",
+  "Contacted",
+  "Details Sent",
+  "Follow-up Needed",
+  "Proposal Sent",
+  "Won",
+];
+const closedStageOptions: LeadStage[] = ["Lost", "Rejected", "No Response"];
+
 export function PipelineClient() {
   const { leads, followups, loading, updateLead } = useCRM();
   const [query, setQuery] = useState("");
   const [temperatureFilter, setTemperatureFilter] = useState("all");
+  const [stageView, setStageView] = useState<StageView>("active");
   const scores = useMemo(() => getLeadScores(leads, followups), [followups, leads]);
   const scoreByLeadId = useMemo(
     () => new Map(scores.map((score) => [score.lead.id, score])),
@@ -40,7 +53,13 @@ export function PipelineClient() {
           .includes(text);
       });
   }, [leads, query, temperatureFilter]);
-  const columns = leadStageOptions.map((stage) => {
+  const visibleStages =
+    stageView === "active"
+      ? activeStageOptions
+      : stageView === "closed"
+        ? closedStageOptions
+        : leadStageOptions;
+  const columns = visibleStages.map((stage) => {
     const stageLeads = filteredPipelineLeads
       .filter((lead) => lead.leadStage === stage)
       .sort((a, b) => (scoreByLeadId.get(b.id)?.score || 0) - (scoreByLeadId.get(a.id)?.score || 0));
@@ -90,16 +109,16 @@ export function PipelineClient() {
           <div>
             <h2 className="text-xl font-semibold">Kanban by stage</h2>
             <p className="mt-1 text-sm text-muted">
-              Search, filter, and use the next-stage action inside a card to move leads faster.
+              Active stages are shown first to keep the sales board readable. Switch views for closed or all stages.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge tone="neutral">{leadStageOptions.length} stages</Badge>
+            <Badge tone="neutral">{visibleStages.length} stages</Badge>
             <Badge tone="info">{filteredPipelineLeads.length} visible</Badge>
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-end">
+        <div className="grid gap-3 xl:grid-cols-[1fr_220px_auto_auto] xl:items-end">
           <label className="block">
             <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
               Search Pipeline
@@ -134,12 +153,36 @@ export function PipelineClient() {
           <Link href="/leads" className={buttonClasses("secondary")}>
             Lead Table
           </Link>
+          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-border bg-surface-soft p-1">
+            {[
+              ["active", "Active"],
+              ["closed", "Closed"],
+              ["all", "All"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={cn(
+                  "min-h-9 rounded-xl px-3 text-xs font-bold transition",
+                  stageView === value
+                    ? "bg-surface-strong text-white"
+                    : "text-muted hover:bg-white hover:text-foreground",
+                )}
+                onClick={() => setStageView(value as StageView)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="-mx-2 overflow-x-auto px-2 pb-2">
-          <div className="grid min-w-[1180px] grid-cols-9 gap-3">
+        <div className="-mx-3 overflow-x-auto px-3 pb-3">
+          <div className="flex w-max gap-4">
             {columns.map((column) => (
-              <section key={column.stage} className="min-w-0 rounded-[18px] border border-border bg-surface-soft">
+              <section
+                key={column.stage}
+                className="w-[82vw] max-w-[320px] shrink-0 rounded-[18px] border border-border bg-surface-soft sm:w-[300px]"
+              >
                 <div className="sticky top-0 rounded-t-[18px] border-b border-border bg-white p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -151,7 +194,7 @@ export function PipelineClient() {
                     <Badge tone="neutral">{column.leads.length}</Badge>
                   </div>
                 </div>
-                <div className="space-y-3 p-3">
+                <div className="max-h-[66vh] space-y-2 overflow-y-auto p-3 pr-2">
                   {column.leads.length ? (
                     column.leads.map((lead) => (
                       <PipelineCard
@@ -201,8 +244,8 @@ function PipelineCard({
   return (
     <article className="rounded-2xl border border-border bg-white p-3 shadow-[0_10px_26px_rgba(22,44,55,0.06)]">
       <div className="flex items-start justify-between gap-2">
-        <Link href={`/leads/${lead.id}`} className="min-w-0 font-semibold hover:underline">
-          <span className="line-clamp-2">{getDisplayName(lead)}</span>
+        <Link href={`/leads/${lead.id}`} className="min-w-0 text-sm font-semibold hover:underline">
+          <span className="line-clamp-1">{getDisplayName(lead)}</span>
         </Link>
         <Badge tone={score >= 75 ? "hot" : score >= 50 ? "success" : "muted"}>{score}</Badge>
       </div>
@@ -213,27 +256,31 @@ function PipelineCard({
         <Badge>{lead.leadTemperature}</Badge>
         <Badge tone={followupTone}>{formatDate(lead.nextFollowupDate, "No next date")}</Badge>
       </div>
-      <select
-        className={`${inputClasses} mt-3 min-h-9 rounded-xl text-xs`}
-        value={lead.leadStage}
-        onChange={(event) => onStageChange(event.target.value as LeadStage)}
-      >
-        {leadStageOptions.map((stage) => (
-          <option key={stage} value={stage}>
-            {stage}
-          </option>
-        ))}
-      </select>
-      {nextStage ? (
-        <button
-          type="button"
-          className="mt-2 inline-flex min-h-8 w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-soft px-3 text-xs font-semibold text-accent-dark transition hover:border-[#c2d1d8] hover:bg-white"
-          onClick={() => onMoveNext(nextStage)}
+      <div className="mt-3 grid gap-2">
+        <select
+          className={`${inputClasses} min-h-9 rounded-xl text-xs`}
+          value={lead.leadStage}
+          onChange={(event) => onStageChange(event.target.value as LeadStage)}
+          title="Change stage"
         >
-          Move to {nextStage}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      ) : null}
+          {leadStageOptions.map((stage) => (
+            <option key={stage} value={stage}>
+              {stage}
+            </option>
+          ))}
+        </select>
+        {nextStage ? (
+          <button
+            type="button"
+            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-border bg-surface-soft px-3 text-xs font-semibold text-accent-dark transition hover:border-[#c2d1d8] hover:bg-white"
+            onClick={() => onMoveNext(nextStage)}
+            title={`Move to ${nextStage}`}
+          >
+            Next
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
       <div className="mt-3 space-y-1">
         {reasons.slice(0, 3).map((reason) => (
           <p key={reason} className="truncate text-xs text-muted">
