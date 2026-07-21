@@ -5,6 +5,7 @@ import { ArrowRight, Download, IndianRupee, MessageCircle, Percent, PhoneCall, T
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { ReportInsightsPanel } from "@/components/ai-panels";
+import { CalculationGlossary } from "@/components/calculation-glossary";
 import { BarList, DonutChart } from "@/components/charts";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, PageHeader, Panel, buttonClasses, inputClasses } from "@/components/ui";
@@ -292,6 +293,8 @@ export function ReportsClient() {
       </Panel>
 
       <ReportInsightsPanel />
+
+      <CalculationGlossary scope="reports" />
 
       <Panel id="sales-intelligence" className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
