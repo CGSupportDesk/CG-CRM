@@ -527,8 +527,8 @@ function MobileLeadCard({
   onUpdate: (changes: Partial<LeadDraft>) => Promise<void> | void;
 }) {
   return (
-    <article className={cn("rounded-[20px] border border-border bg-white p-4", lead.isArchived && "opacity-60")}>
-      <div className="flex items-start justify-between gap-3">
+    <article className={cn("w-full min-w-0 overflow-hidden rounded-[20px] border border-border bg-white p-4", lead.isArchived && "opacity-60")}>
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <Link href={`/leads/${lead.id}`} className="block truncate text-base font-bold hover:underline">
             {getDisplayName(lead)}
@@ -546,8 +546,8 @@ function MobileLeadCard({
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-2xl border border-border bg-surface-soft p-3">
+      <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+        <div className="min-w-0 rounded-2xl border border-border bg-surface-soft p-3">
           <p className="font-bold uppercase tracking-[0.08em] text-muted">Phone</p>
           <InlineTextField
             value={lead.phone}
@@ -556,14 +556,14 @@ function MobileLeadCard({
             onSave={(value) => onUpdate({ phone: value })}
           />
         </div>
-        <div className="rounded-2xl border border-border bg-surface-soft p-3">
+        <div className="min-w-0 rounded-2xl border border-border bg-surface-soft p-3">
           <p className="font-bold uppercase tracking-[0.08em] text-muted">Value</p>
           <p className="mt-2 font-mono text-sm font-bold">{formatCurrency(lead.expectedValue)}</p>
           <p className="mt-1 truncate font-semibold text-muted">{lead.serviceInterest}</p>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
         <InlineSelect<LeadTemperature>
           value={lead.leadTemperature}
           options={leadTemperatureOptions}

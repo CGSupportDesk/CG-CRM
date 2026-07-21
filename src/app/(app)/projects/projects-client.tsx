@@ -248,8 +248,8 @@ function ProjectMobileCard({
   const dueRisk = project.dueDate && project.status !== "Delivered" && (isToday(project.dueDate) || isOverdue(project.dueDate));
 
   return (
-    <article className="rounded-[20px] border border-border bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+    <article className="w-full min-w-0 overflow-hidden rounded-[20px] border border-border bg-white p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-base font-bold">{project.projectName}</p>
           <p className="mt-1 truncate text-xs text-muted">{clientName} - {project.projectType}</p>
@@ -265,7 +265,7 @@ function ProjectMobileCard({
           <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(progress, target ? 8 : 0)}%` }} />
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
         <MiniProjectCell label="Designer" value={project.designer || "Unassigned"} />
         <MiniProjectCell label="Due" value={formatDate(project.dueDate)} danger={Boolean(dueRisk)} />
         <MiniProjectCell label="Slots" value={slotCount} />
@@ -293,7 +293,7 @@ function MiniProjectCell({
   danger?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border p-3 ${danger ? "border-[#f7c7c7] bg-[#fff0f0]" : "border-border bg-surface-soft"}`}>
+    <div className={`min-w-0 rounded-2xl border p-3 ${danger ? "border-[#f7c7c7] bg-[#fff0f0]" : "border-border bg-surface-soft"}`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-1 truncate text-sm font-bold">{value}</p>
     </div>

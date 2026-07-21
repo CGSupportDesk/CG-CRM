@@ -287,8 +287,8 @@ function ClientMobileCard({
   const renewalRisk = client.renewalDate && (isOverdue(client.renewalDate) || isToday(client.renewalDate));
 
   return (
-    <article className="rounded-[20px] border border-border bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+    <article className="w-full min-w-0 overflow-hidden rounded-[20px] border border-border bg-white p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <Link href={`/clients/${client.id}`} className="block truncate text-base font-bold hover:underline">
             {client.clientName}
@@ -299,7 +299,7 @@ function ClientMobileCard({
         </div>
         <Badge>{client.status}</Badge>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
         <MiniClientCell label="Package" value={client.packageName} />
         <MiniClientCell label="Monthly" value={formatCurrency(client.monthlyValue)} />
         <MiniClientCell label="Renewal" value={formatDate(client.renewalDate)} danger={Boolean(renewalRisk)} />
@@ -335,7 +335,7 @@ function MiniClientCell({
   danger?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border p-3 ${danger ? "border-[#f7c7c7] bg-[#fff0f0]" : "border-border bg-surface-soft"}`}>
+    <div className={`min-w-0 rounded-2xl border p-3 ${danger ? "border-[#f7c7c7] bg-[#fff0f0]" : "border-border bg-surface-soft"}`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p className="mt-1 truncate text-sm font-bold">{value}</p>
     </div>

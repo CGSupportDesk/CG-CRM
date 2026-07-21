@@ -210,4 +210,4 @@ export function FieldLabel({
 }
 
 export const inputClasses =
-  "min-h-11 w-full rounded-2xl border border-border bg-white px-3 text-sm text-foreground outline-none transition placeholder:text-[#9ba8af] focus:border-accent-dark focus:ring-4 focus:ring-accent/30";
+  "min-h-11 w-full min-w-0 rounded-2xl border border-border bg-white px-3 text-sm text-foreground outline-none transition placeholder:text-[#9ba8af] focus:border-accent-dark focus:ring-4 focus:ring-accent/30";
