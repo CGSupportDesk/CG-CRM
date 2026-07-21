@@ -235,13 +235,19 @@ export function PosterCalendarClient() {
               {calendarDays.map((day) => {
                 const daySlots = slotsByDate[day.date] || [];
                 const isCurrentDay = day.date === todayIso();
+                const hasMissedDeadline = daySlots.some(isMissedPosterDeadline);
+                const allPosted = daySlots.length > 0 && daySlots.every((slot) => slot.status === "Posted");
 
                 return (
                   <div
                     key={day.date}
                     className={cn(
                       "min-h-32 rounded-2xl border p-2",
-                      isCurrentDay
+                      hasMissedDeadline
+                        ? "border-[#f7c7c7] bg-[#fff7f7]"
+                        : allPosted
+                          ? "border-[#b8ead6] bg-[#f4fcf8]"
+                          : isCurrentDay
                         ? "border-[#b8ead6] bg-[#f4fcf8]"
                         : "border-border bg-surface-soft",
                     )}
@@ -250,7 +256,9 @@ export function PosterCalendarClient() {
                       <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-xs font-bold">
                         {day.day}
                       </span>
-                      <Badge tone={daySlots.length ? "info" : "muted"}>{daySlots.length}</Badge>
+                      <Badge tone={hasMissedDeadline ? "danger" : allPosted ? "success" : daySlots.length ? "info" : "muted"}>
+                        {daySlots.length}
+                      </Badge>
                     </div>
                     <div className="mt-2 space-y-1.5">
                       {daySlots.length ? (
@@ -258,7 +266,10 @@ export function PosterCalendarClient() {
                           <button
                             key={slot.id}
                             type="button"
-                            className="block w-full rounded-xl border border-border bg-white px-2 py-2 text-left transition hover:border-[#c2d1d8]"
+                            className={cn(
+                              "block w-full rounded-xl border px-2 py-2 text-left transition hover:border-[#c2d1d8]",
+                              getCalendarSlotClass(slot),
+                            )}
                             onClick={() => setEditingSlot(slot)}
                             title="Edit poster slot"
                           >
@@ -267,7 +278,12 @@ export function PosterCalendarClient() {
                             </span>
                             <span className="mt-1 flex items-center justify-between gap-2 text-[10px] font-semibold text-muted">
                               <span className="truncate">{clientById.get(slot.clientId)?.clientName || "Unknown client"}</span>
-                              <span>{slot.status}</span>
+                              <span className={cn(
+                                slot.status === "Posted" && "text-[#0c7c52]",
+                                isMissedPosterDeadline(slot) && "text-[#bd2727]",
+                              )}>
+                                {isMissedPosterDeadline(slot) ? "Missed" : slot.status}
+                              </span>
                             </span>
                           </button>
                         ))
@@ -617,4 +633,20 @@ function formatCalendarMonth(month: string) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function isMissedPosterDeadline(slot: PosterSlot) {
+  return slot.slotDate < todayIso() && slot.status !== "Posted";
+}
+
+function getCalendarSlotClass(slot: PosterSlot) {
+  if (slot.status === "Posted") {
+    return "border-[#b8ead6] bg-[#eafaf3] text-[#0c7c52]";
+  }
+
+  if (isMissedPosterDeadline(slot)) {
+    return "border-[#f7c7c7] bg-[#fff0f0] text-[#bd2727]";
+  }
+
+  return "border-border bg-white text-foreground";
 }
