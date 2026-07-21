@@ -14,6 +14,12 @@ import {
 import { findImportDuplicate } from "@/lib/import-dedupe";
 import { DEFAULT_ASSIGNEE } from "@/lib/constants";
 import { normalizeLeadForStorage } from "@/lib/lead-normalization";
+import {
+  buildPosterSlotDates,
+  formatPosterSequence,
+  getPosterSlotSequenceNumber,
+  normalizePosterMonth,
+} from "@/lib/poster-calendar";
 import { buildPosterCampaignSeed } from "@/lib/poster-campaign";
 import type {
   ActivityLog,
@@ -984,7 +990,7 @@ async function ensureStarterProjectForClient(client: StudioClient) {
 }
 
 async function buildGeneratedPosterSlots(project: StudioProject, month: string) {
-  const normalizedMonth = /^\d{4}-\d{2}$/.test(month) ? month : todayIso().slice(0, 7);
+  const normalizedMonth = normalizePosterMonth(month);
   const sql = getSql();
   const rows = (await sql`
     select slot_date from poster_slots
@@ -992,38 +998,26 @@ async function buildGeneratedPosterSlots(project: StudioProject, month: string) 
       and to_char(slot_date, 'YYYY-MM') = ${normalizedMonth}
   `) as Array<{ slot_date: unknown }>;
   const existingDates = new Set(rows.map((row) => dateText(row.slot_date)));
-  const dates = getPosterSlotDates(normalizedMonth, project.monthlyPosterTarget || 30)
-    .filter((date) => !existingDates.has(date));
+  const scheduleDates = buildPosterSlotDates(
+    normalizedMonth,
+    project.monthlyPosterTarget || 30,
+    project.createdAt,
+  );
+  const dates = scheduleDates.filter((date) => !existingDates.has(date));
   const clientId = project.clientId;
 
-  return dates.map((slotDate, index) =>
-    buildPosterSlotFromDraft({
+  return dates.map((slotDate) => {
+    const sequence = getPosterSlotSequenceNumber(slotDate, scheduleDates);
+    return buildPosterSlotFromDraft({
       projectId: project.id,
       clientId,
-      title: `${project.projectName || "Poster Package"} - Poster ${String(existingDates.size + index + 1).padStart(2, "0")}`,
+      title: `${project.projectName || "Poster Package"} - ${formatPosterSequence(sequence)}`,
       slotDate,
       designer: project.designer || DEFAULT_ASSIGNEE,
       status: "Planned",
       captionRequired: true,
       notes: "Generated monthly poster slot.",
-    }),
-  );
-}
-
-function getPosterSlotDates(month: string, target: number) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  if (!year || !monthNumber) return [];
-
-  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0, 12)).getUTCDate();
-  const clampedTarget = Math.min(Math.max(target || 30, 1), daysInMonth);
-  const step = daysInMonth / clampedTarget;
-  const used = new Set<number>();
-
-  return Array.from({ length: clampedTarget }, (_, index) => {
-    let day = Math.min(daysInMonth, Math.max(1, Math.floor(index * step) + 1));
-    while (used.has(day) && day < daysInMonth) day += 1;
-    used.add(day);
-    return `${year}-${String(monthNumber).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    });
   });
 }
 

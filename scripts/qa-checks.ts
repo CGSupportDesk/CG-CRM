@@ -34,6 +34,11 @@ import {
   whatsappTemplatePerformance,
 } from "../src/lib/analytics";
 import { rowsToCsv } from "../src/lib/export-utils";
+import {
+  buildPosterSlotDates,
+  getPosterMonthDays,
+  getPosterSlotSequenceNumber,
+} from "../src/lib/poster-calendar";
 import type { ActivityLog, Followup, ImportPreviewRow, Lead, LeadDraft } from "../src/lib/types";
 
 assert.deepEqual(buildFollowupSchedule("2026-07-06"), [
@@ -338,7 +343,21 @@ assert.equal(
   'Name,Remarks,Count\n"A, B","Line 1\nLine 2",2',
 );
 
-console.log("QA checks passed: follow-up schedule, WhatsApp, import dedupe, scoring, aging, audit, data quality, exports, and report math.");
+assert.equal(getPosterMonthDays("2026-07").length, 31);
+assert.equal(getPosterMonthDays("2026-04").length, 30);
+assert.equal(getPosterMonthDays("2026-02").length, 28);
+assert.deepEqual(
+  buildPosterSlotDates("2026-07", 30, "2026-07-15T04:30:00.000Z").slice(0, 3),
+  ["2026-07-15", "2026-07-16", "2026-07-17"],
+);
+assert.equal(buildPosterSlotDates("2026-07", 30, "2026-07-15T04:30:00.000Z").length, 17);
+assert.equal(buildPosterSlotDates("2026-08", 30, "2026-07-15T04:30:00.000Z")[0], "2026-08-01");
+assert.deepEqual(buildPosterSlotDates("2026-06", 30, "2026-07-15T04:30:00.000Z"), []);
+const midMonthSchedule = buildPosterSlotDates("2026-07", 30, "2026-07-15T04:30:00.000Z");
+assert.equal(getPosterSlotSequenceNumber("2026-07-15", midMonthSchedule), 1);
+assert.equal(getPosterSlotSequenceNumber("2026-07-31", midMonthSchedule), 17);
+
+console.log("QA checks passed: follow-up schedule, WhatsApp, import dedupe, poster calendar, scoring, aging, audit, data quality, exports, and report math.");
 
 function previewRow(rowNumber: number, lead: Partial<LeadDraft>): ImportPreviewRow {
   return {

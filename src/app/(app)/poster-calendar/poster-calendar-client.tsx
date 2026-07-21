@@ -5,8 +5,14 @@ import { useMemo, useState } from "react";
 import { useCRM } from "@/components/crm-provider";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { designerOptions, posterSlotStatusOptions } from "@/lib/constants";
-import type { PosterSlot, PosterSlotDraft, PosterSlotStatus } from "@/lib/types";
-import { formatDate, todayIso } from "@/lib/utils";
+import {
+  buildPosterSlotDates,
+  formatPosterSequence,
+  getPosterMonthDays,
+  getPosterSlotSequenceNumber,
+} from "@/lib/poster-calendar";
+import type { PosterSlot, PosterSlotDraft, PosterSlotStatus, StudioProject } from "@/lib/types";
+import { cn, formatDate, todayIso } from "@/lib/utils";
 
 export function PosterCalendarClient() {
   const {
@@ -29,38 +35,91 @@ export function PosterCalendarClient() {
 
   const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
-  const filteredProjects = projects.filter(
-    (project) => clientFilter === "all" || project.clientId === clientFilter,
+  const filteredProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) => clientFilter === "all" || project.clientId === clientFilter,
+      ),
+    [clientFilter, projects],
   );
-  const posterProjects = filteredProjects.filter((project) => project.projectType === "Poster Package");
-  const projectOptions = [
-    ...posterProjects,
-    ...filteredProjects.filter((project) => project.projectType !== "Poster Package"),
-  ];
+  const projectOptions = useMemo(() => {
+    const posterProjects = filteredProjects.filter(
+      (project) => project.projectType === "Poster Package",
+    );
+    return [
+      ...posterProjects,
+      ...filteredProjects.filter((project) => project.projectType !== "Poster Package"),
+    ];
+  }, [filteredProjects]);
   const selectedProjectId = projectOptions.some((project) => project.id === projectId)
     ? projectId
     : projectOptions[0]?.id || "";
-  const allMonthSlots = posterSlots
-    .filter((slot) => slot.slotDate.startsWith(month))
-    .sort((a, b) => a.slotDate.localeCompare(b.slotDate));
-  const monthSlots = allMonthSlots.filter(
-    (slot) => clientFilter === "all" || slot.clientId === clientFilter,
+  const selectedProject = projectOptions.find((project) => project.id === selectedProjectId) || null;
+  const allMonthSlots = useMemo(
+    () =>
+      posterSlots
+        .filter((slot) => slot.slotDate.startsWith(month))
+        .sort((a, b) => a.slotDate.localeCompare(b.slotDate)),
+    [month, posterSlots],
   );
-  const workflowColumns = posterSlotStatusOptions.map((status) => ({
-    status,
-    slots: monthSlots.filter((slot) => slot.status === status),
-  }));
-  const designerWorkload = designerOptions
-    .map((designer) => ({
-      designer,
-      count: monthSlots.filter((slot) => slot.designer === designer && slot.status !== "Posted").length,
-    }))
-    .filter((item) => item.count > 0);
+  const monthSlots = useMemo(
+    () =>
+      allMonthSlots.filter(
+        (slot) => clientFilter === "all" || slot.clientId === clientFilter,
+      ),
+    [allMonthSlots, clientFilter],
+  );
+  const workflowColumns = useMemo(
+    () =>
+      posterSlotStatusOptions.map((status) => ({
+        status,
+        slots: monthSlots.filter((slot) => slot.status === status),
+      })),
+    [monthSlots],
+  );
+  const designerWorkload = useMemo(
+    () =>
+      designerOptions
+        .map((designer) => ({
+          designer,
+          count: monthSlots.filter((slot) => slot.designer === designer && slot.status !== "Posted").length,
+        }))
+        .filter((item) => item.count > 0),
+    [monthSlots],
+  );
+  const calendarDays = useMemo(() => getPosterMonthDays(month), [month]);
+  const calendarStartOffset = calendarDays[0]?.weekday || 0;
+  const slotsByDate = useMemo(
+    () =>
+      monthSlots.reduce<Record<string, PosterSlot[]>>((acc, slot) => {
+        acc[slot.slotDate] ||= [];
+        acc[slot.slotDate].push(slot);
+        return acc;
+      }, {}),
+    [monthSlots],
+  );
+  const slotSequenceById = useMemo(
+    () => buildSlotSequenceMap(month, monthSlots, projectById),
+    [month, monthSlots, projectById],
+  );
 
   async function generateSlots() {
     if (!selectedProjectId) return;
     const count = await generatePosterSlots(selectedProjectId, month);
-    setGeneratedMessage(count ? `${count} poster slots generated for ${month}.` : "Slots already exist for this project and month.");
+    const scheduledDates = selectedProject
+      ? buildPosterSlotDates(
+          month,
+          selectedProject.monthlyPosterTarget || 30,
+          selectedProject.createdAt,
+        )
+      : [];
+    setGeneratedMessage(
+      count
+        ? `${count} poster slots generated for ${month}.`
+        : scheduledDates.length
+          ? "Slots already exist for this project and month."
+          : "No slots generated because this project starts after the selected month.",
+    );
   }
 
   async function saveSlot(draft: PosterSlotDraft) {
@@ -127,6 +186,10 @@ export function PosterCalendarClient() {
         <div className="flex flex-wrap gap-2">
           <Badge tone="neutral">{monthSlots.length} visible slots</Badge>
           <Badge tone="neutral">{allMonthSlots.length} total this month</Badge>
+          <Badge tone="neutral">{calendarDays.length} calendar days</Badge>
+          {selectedProject ? (
+            <Badge tone="info">Project starts {formatDate(selectedProject.createdAt.slice(0, 10))}</Badge>
+          ) : null}
           {clientFilter !== "all" ? (
             <Button variant="secondary" size="sm" onClick={() => setClientFilter("all")}>
               Clear client filter
@@ -147,6 +210,80 @@ export function PosterCalendarClient() {
         <CalendarMetric label="Scheduled" value={monthSlots.filter((slot) => slot.status === "Scheduled").length} />
         <CalendarMetric label="Posted" value={monthSlots.filter((slot) => slot.status === "Posted").length} />
       </div>
+
+      <Panel className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Calendar view</h2>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Full month view with every date visible, including empty 31st days.
+            </p>
+          </div>
+          <Badge tone="neutral">{formatCalendarMonth(month)}</Badge>
+        </div>
+        <div className="overflow-x-auto pb-1">
+          <div className="min-w-[920px]">
+            <div className="grid grid-cols-7 gap-2">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <div key={day} className="rounded-xl bg-surface-strong px-3 py-2 text-center text-xs font-bold uppercase tracking-[0.08em] text-[#cad6dc]">
+                  {day}
+                </div>
+              ))}
+              {Array.from({ length: calendarStartOffset }, (_, index) => (
+                <div key={`blank-${index}`} className="min-h-32 rounded-2xl border border-dashed border-border bg-surface-soft/60" />
+              ))}
+              {calendarDays.map((day) => {
+                const daySlots = slotsByDate[day.date] || [];
+                const isCurrentDay = day.date === todayIso();
+
+                return (
+                  <div
+                    key={day.date}
+                    className={cn(
+                      "min-h-32 rounded-2xl border p-2",
+                      isCurrentDay
+                        ? "border-[#b8ead6] bg-[#f4fcf8]"
+                        : "border-border bg-surface-soft",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-xs font-bold">
+                        {day.day}
+                      </span>
+                      <Badge tone={daySlots.length ? "info" : "muted"}>{daySlots.length}</Badge>
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {daySlots.length ? (
+                        daySlots.map((slot) => (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            className="block w-full rounded-xl border border-border bg-white px-2 py-2 text-left transition hover:border-[#c2d1d8]"
+                            onClick={() => setEditingSlot(slot)}
+                            title="Edit poster slot"
+                          >
+                            <span className="block truncate text-[11px] font-bold">
+                              {getDisplayPosterTitle(slot, slotSequenceById.get(slot.id) || 0)}
+                            </span>
+                            <span className="mt-1 flex items-center justify-between gap-2 text-[10px] font-semibold text-muted">
+                              <span className="truncate">{clientById.get(slot.clientId)?.clientName || "Unknown client"}</span>
+                              <span>{slot.status}</span>
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="rounded-xl border border-dashed border-border bg-white/70 px-2 py-3 text-center text-[11px] font-semibold text-muted">
+                          No poster
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Panel>
 
       <Panel className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -183,7 +320,9 @@ export function PosterCalendarClient() {
                     const nextStatus = getNextPosterStatus(slot.status);
                     return (
                       <div key={slot.id} className="rounded-xl border border-border bg-white p-3">
-                        <p className="line-clamp-2 text-sm font-semibold">{slot.title}</p>
+                        <p className="line-clamp-2 text-sm font-semibold">
+                          {getDisplayPosterTitle(slot, slotSequenceById.get(slot.id) || 0)}
+                        </p>
                         <p className="mt-1 text-xs text-muted">{client?.clientName || "Unknown client"}</p>
                         <p className="mt-1 text-xs text-muted">
                           {formatDate(slot.slotDate)} - {slot.designer}
@@ -244,7 +383,9 @@ export function PosterCalendarClient() {
                       <tr key={slot.id}>
                         <td className="px-4 py-4 font-semibold">{formatDate(slot.slotDate)}</td>
                         <td className="px-4 py-4">
-                          <p className="font-semibold">{slot.title}</p>
+                          <p className="font-semibold">
+                            {getDisplayPosterTitle(slot, slotSequenceById.get(slot.id) || 0)}
+                          </p>
                           <p className="mt-1 text-xs text-muted">{slot.notes || (slot.captionRequired ? "Caption required" : "Design only")}</p>
                         </td>
                         <td className="px-4 py-4">{client?.clientName || "Unknown client"}</td>
@@ -421,4 +562,59 @@ function CalendarMetric({ label, value }: { label: string; value: string | numbe
 function getNextPosterStatus(status: PosterSlotStatus): PosterSlotStatus | "" {
   const index = posterSlotStatusOptions.indexOf(status);
   return posterSlotStatusOptions[index + 1] || "";
+}
+
+function buildSlotSequenceMap(
+  month: string,
+  slots: PosterSlot[],
+  projectById: Map<string, StudioProject>,
+) {
+  const slotsByProject = slots.reduce<Map<string, PosterSlot[]>>((acc, slot) => {
+    const projectSlots = acc.get(slot.projectId) || [];
+    projectSlots.push(slot);
+    acc.set(slot.projectId, projectSlots);
+    return acc;
+  }, new Map());
+  const sequenceById = new Map<string, number>();
+
+  slotsByProject.forEach((projectSlots, projectId) => {
+    const project = projectById.get(projectId);
+    const sortedSlots = [...projectSlots].sort((a, b) => a.slotDate.localeCompare(b.slotDate));
+    const scheduleDates = buildPosterSlotDates(
+      month,
+      project?.monthlyPosterTarget || sortedSlots.length || 30,
+      project?.createdAt || "",
+    );
+
+    sortedSlots.forEach((slot, index) => {
+      sequenceById.set(
+        slot.id,
+        getPosterSlotSequenceNumber(slot.slotDate, scheduleDates) || index + 1,
+      );
+    });
+  });
+
+  return sequenceById;
+}
+
+function getDisplayPosterTitle(slot: PosterSlot, sequence: number) {
+  if (!sequence) return slot.title || "Poster";
+
+  const sequenceLabel = formatPosterSequence(sequence);
+  if (!slot.title.trim()) return sequenceLabel;
+  if (/poster\s+\d+/i.test(slot.title)) {
+    return slot.title.replace(/poster\s+\d+/i, sequenceLabel);
+  }
+
+  return `${sequenceLabel} - ${slot.title}`;
+}
+
+function formatCalendarMonth(month: string) {
+  const date = new Date(`${month}-01T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return month;
+
+  return new Intl.DateTimeFormat("en-IN", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
 }
