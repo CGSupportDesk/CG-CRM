@@ -8,6 +8,7 @@ import {
   getNextFollowupDateForNewFollowup,
   getScheduledNextDateForFollowup,
   getWorkingDayDelta,
+  isTerminalOutcome,
   isTerminalStage,
   sortFollowups,
 } from "@/lib/followup-schedule";
@@ -342,7 +343,8 @@ export async function addFollowupRecord(draft: FollowupDraft) {
   const existingFollowups = await getFollowupsByLeadId(draft.leadId);
   const scheduledFollowupDate = draft.scheduledFollowupDate || lead?.nextFollowupDate || draft.followupDate;
   const markedAt = draft.markedAt || now;
-  const nextFollowupDate = lead
+  const manualNextFollowupDate = draft.nextFollowupDate?.trim() || "";
+  const automaticNextFollowupDate = lead
     ? getNextFollowupDateForNewFollowup(
         lead,
         existingFollowups,
@@ -350,6 +352,10 @@ export async function addFollowupRecord(draft: FollowupDraft) {
         draft.outcome,
       )
     : draft.nextFollowupDate;
+  const nextFollowupDate =
+    manualNextFollowupDate && !isTerminalOutcome(draft.outcome)
+      ? manualNextFollowupDate
+      : automaticNextFollowupDate;
   const followup: Followup = {
     ...draft,
     scheduledFollowupDate,
@@ -381,7 +387,7 @@ export async function addFollowupRecord(draft: FollowupDraft) {
       draft.leadId,
       "Follow-up added",
       scheduledFollowupDate,
-      `${draft.followupType} - ${draft.outcome} - actual ${draft.followupDate} - marked ${markedAt.slice(0, 10)} - ${formatFollowupDelay(getWorkingDayDelta(scheduledFollowupDate, draft.followupDate))}`,
+      `${draft.followupType} - ${draft.outcome} - actual ${draft.followupDate} - marked ${markedAt.slice(0, 10)} - ${formatFollowupDelay(getWorkingDayDelta(scheduledFollowupDate, draft.followupDate))}${manualNextFollowupDate && !isTerminalOutcome(draft.outcome) ? ` - next override ${manualNextFollowupDate}` : ""}`,
     ),
     ...(lead && lead.leadStage !== inferredStage
       ? [buildLog(draft.leadId, "Stage updated", lead.leadStage, inferredStage)]
@@ -406,7 +412,7 @@ export async function updateFollowupRecord(id: string, changes: Partial<Followup
     ...changes,
     scheduledFollowupDate: changes.scheduledFollowupDate || existing.scheduledFollowupDate || existing.followupDate,
     markedAt: changes.markedAt || existing.markedAt || existing.createdAt,
-    nextFollowupDate: existing.nextFollowupDate,
+    nextFollowupDate: changes.nextFollowupDate?.trim() || existing.nextFollowupDate,
   };
   await sql`
     update followups
@@ -426,8 +432,25 @@ export async function updateFollowupRecord(id: string, changes: Partial<Followup
   await rescheduleLeadFollowups(updated.leadId);
   if (existing.leadId !== updated.leadId) await rescheduleLeadFollowups(existing.leadId);
 
+  const manualNextFollowupDate = changes.nextFollowupDate?.trim() || "";
+  if (manualNextFollowupDate && !isTerminalOutcome(updated.outcome)) {
+    await sql`
+      update followups
+      set next_followup_date = ${dateOrNull(manualNextFollowupDate)}
+      where id = ${id}
+    `;
+    await sql`
+      update leads
+      set next_followup_date = ${dateOrNull(manualNextFollowupDate)}, updated_at = ${new Date().toISOString()}
+      where id = ${updated.leadId}
+    `;
+  }
+
   await insertLogs([
     buildLog(updated.leadId, "Follow-up updated", existing.outcome, updated.outcome),
+    ...(manualNextFollowupDate && !isTerminalOutcome(updated.outcome)
+      ? [buildLog(updated.leadId, "Next follow-up override", existing.nextFollowupDate, manualNextFollowupDate)]
+      : []),
   ]);
 
   return { state: await readCrmState(sql) };

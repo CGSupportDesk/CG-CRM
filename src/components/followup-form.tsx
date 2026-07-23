@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, FieldLabel, inputClasses } from "@/components/ui";
 import { followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
-import { formatFollowupDelay, getNextFollowupDateForNewFollowup, getWorkingDayDelta } from "@/lib/followup-schedule";
+import { formatFollowupDelay, getNextFollowupDateForNewFollowup, getWorkingDayDelta, isTerminalOutcome } from "@/lib/followup-schedule";
 import type { Followup, FollowupDraft, Lead } from "@/lib/types";
 import { formatDate, formatDateTime, todayIso } from "@/lib/utils";
 
@@ -30,6 +30,7 @@ export function FollowupForm({
     createdBy: "captain",
   });
   const [markedAt] = useState(() => new Date().toISOString());
+  const [overrideNextDate, setOverrideNextDate] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const selectedLead = leads.find((lead) => lead.id === draft.leadId);
   const existingFollowups = followups.filter((followup) => followup.leadId === draft.leadId);
@@ -51,6 +52,9 @@ export function FollowupForm({
     const nextErrors: Record<string, string> = {};
     if (!draft.leadId) nextErrors.leadId = "Choose a lead.";
     if (!draft.followupDate) nextErrors.followupDate = "Choose the follow-up date.";
+    if (overrideNextDate && !isTerminalOutcome(draft.outcome) && !draft.nextFollowupDate) {
+      nextErrors.nextFollowupDate = "Choose the override next follow-up date.";
+    }
     if (!draft.remarks.trim()) nextErrors.remarks = "Remarks are mandatory before saving.";
     setErrors(nextErrors);
 
@@ -59,7 +63,9 @@ export function FollowupForm({
         ...draft,
         scheduledFollowupDate,
         markedAt,
-        nextFollowupDate: calculatedNextFollowupDate,
+        nextFollowupDate: overrideNextDate && !isTerminalOutcome(draft.outcome)
+          ? draft.nextFollowupDate
+          : calculatedNextFollowupDate,
         remarks: draft.remarks.trim(),
       });
     }
@@ -138,6 +144,37 @@ export function FollowupForm({
         <FieldLabel label="Next Follow-up Date (Auto)">
           <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
             {formatDate(calculatedNextFollowupDate, "No next follow-up")}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Override Next Follow-up" error={errors.nextFollowupDate}>
+          <div className="space-y-2">
+            <label className={`${inputClasses} flex cursor-pointer items-center justify-between gap-3`}>
+              <span className="text-sm font-semibold">Use manual date</span>
+              <input
+                type="checkbox"
+                checked={overrideNextDate}
+                disabled={isTerminalOutcome(draft.outcome)}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setOverrideNextDate(checked);
+                  if (checked && !draft.nextFollowupDate) {
+                    setField("nextFollowupDate", calculatedNextFollowupDate || selectedLead?.nextFollowupDate || "");
+                  }
+                }}
+              />
+            </label>
+            {overrideNextDate && !isTerminalOutcome(draft.outcome) ? (
+              <input
+                type="date"
+                className={inputClasses}
+                value={draft.nextFollowupDate}
+                onChange={(event) => setField("nextFollowupDate", event.target.value)}
+              />
+            ) : (
+              <p className="text-xs font-semibold text-muted">
+                Auto schedule is used unless manual date is enabled.
+              </p>
+            )}
           </div>
         </FieldLabel>
       </div>

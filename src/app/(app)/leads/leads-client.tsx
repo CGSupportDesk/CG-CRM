@@ -18,7 +18,9 @@ import {
 import {
   buildLeadContactTimeline,
   formatFollowupDelay,
+  getNextFollowupDateAfterContact,
   getWorkingDayDelta,
+  isTerminalOutcome,
   type LeadContactTimelineItem,
 } from "@/lib/followup-schedule";
 import { exportRowsToCsv } from "@/lib/export-utils";
@@ -757,6 +759,15 @@ function ScheduledFollowupModal({
     existingFollowup?.followupType || "Call",
   );
   const [markedAt] = useState(() => new Date().toISOString());
+  const automaticNextFollowupDate = getNextFollowupDateAfterContact(
+    actualFollowupDate,
+    mark.item.followupNumber + 1,
+    outcome,
+  );
+  const [overrideNextDate, setOverrideNextDate] = useState(false);
+  const [overrideNextFollowupDate, setOverrideNextFollowupDate] = useState(
+    existingFollowup?.nextFollowupDate || automaticNextFollowupDate,
+  );
   const [remarks, setRemarks] = useState(existingFollowup?.remarks || "");
   const [error, setError] = useState("");
   const delayText = formatFollowupDelay(getWorkingDayDelta(mark.item.date, actualFollowupDate));
@@ -771,6 +782,10 @@ function ScheduledFollowupModal({
       setError("Choose the actual follow-up date.");
       return;
     }
+    if (overrideNextDate && !isTerminalOutcome(outcome) && !overrideNextFollowupDate) {
+      setError("Choose the override next follow-up date.");
+      return;
+    }
 
     await onSubmit({
       leadId: mark.lead.id,
@@ -778,7 +793,7 @@ function ScheduledFollowupModal({
       followupDate: actualFollowupDate,
       followupType,
       outcome,
-      nextFollowupDate: "",
+      nextFollowupDate: overrideNextDate && !isTerminalOutcome(outcome) ? overrideNextFollowupDate : "",
       remarks: trimmedRemarks,
       createdBy: "captain",
       markedAt,
@@ -850,6 +865,42 @@ function ScheduledFollowupModal({
               </option>
             ))}
           </select>
+        </FieldLabel>
+        <FieldLabel label="Next Follow-up Date (Auto)">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {formatDate(automaticNextFollowupDate, "No next follow-up")}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Override Next Follow-up">
+          <div className="space-y-2">
+            <label className={`${inputClasses} flex cursor-pointer items-center justify-between gap-3`}>
+              <span className="text-sm font-semibold">Use manual date</span>
+              <input
+                type="checkbox"
+                checked={overrideNextDate}
+                disabled={isTerminalOutcome(outcome)}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setOverrideNextDate(checked);
+                  if (checked && !overrideNextFollowupDate) {
+                    setOverrideNextFollowupDate(automaticNextFollowupDate);
+                  }
+                }}
+              />
+            </label>
+            {overrideNextDate && !isTerminalOutcome(outcome) ? (
+              <input
+                type="date"
+                className={inputClasses}
+                value={overrideNextFollowupDate}
+                onChange={(event) => setOverrideNextFollowupDate(event.target.value)}
+              />
+            ) : (
+              <p className="text-xs font-semibold text-muted">
+                Auto schedule is used unless manual date is enabled.
+              </p>
+            )}
+          </div>
         </FieldLabel>
       </div>
       <FieldLabel label="Comments" error={error}>

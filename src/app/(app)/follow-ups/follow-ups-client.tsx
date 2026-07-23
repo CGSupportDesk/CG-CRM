@@ -8,7 +8,7 @@ import { FollowupForm } from "@/components/followup-form";
 import { Badge, Button, EmptyState, FieldLabel, Modal, PageHeader, Panel, inputClasses } from "@/components/ui";
 import { WhatsAppModal } from "@/components/whatsapp-modal";
 import { DEFAULT_ASSIGNEE, assigneeOptions, followupOutcomeOptions, followupTypeOptions } from "@/lib/constants";
-import { formatFollowupDelay, getWorkingDayDelta } from "@/lib/followup-schedule";
+import { formatFollowupDelay, getWorkingDayDelta, isTerminalOutcome } from "@/lib/followup-schedule";
 import { getFollowupTasks } from "@/lib/analytics";
 import type { Followup, FollowupDraft, FollowupOutcome, FollowupType, Lead } from "@/lib/types";
 import { formatDate, formatDateTime, getDisplayName, isOverdue, isToday } from "@/lib/utils";
@@ -244,6 +244,10 @@ function EditFollowupModal({
   const [actualFollowupDate, setActualFollowupDate] = useState(followup.followupDate);
   const [followupType, setFollowupType] = useState<FollowupType>(followup.followupType);
   const [outcome, setOutcome] = useState<FollowupOutcome>(followup.outcome);
+  const [overrideNextDate, setOverrideNextDate] = useState(false);
+  const [overrideNextFollowupDate, setOverrideNextFollowupDate] = useState(
+    followup.nextFollowupDate,
+  );
   const [remarks, setRemarks] = useState(followup.remarks);
   const [markedAt] = useState(() => new Date().toISOString());
   const [error, setError] = useState("");
@@ -259,6 +263,10 @@ function EditFollowupModal({
       setError("Remarks are mandatory before updating.");
       return;
     }
+    if (overrideNextDate && !isTerminalOutcome(outcome) && !overrideNextFollowupDate) {
+      setError("Choose the override next follow-up date.");
+      return;
+    }
 
     await onSubmit({
       leadId: followup.leadId,
@@ -266,7 +274,7 @@ function EditFollowupModal({
       followupDate: actualFollowupDate,
       followupType,
       outcome,
-      nextFollowupDate: followup.nextFollowupDate,
+      nextFollowupDate: overrideNextDate && !isTerminalOutcome(outcome) ? overrideNextFollowupDate : "",
       remarks: trimmedRemarks,
       createdBy: followup.createdBy,
       markedAt,
@@ -335,6 +343,44 @@ function EditFollowupModal({
               </option>
             ))}
           </select>
+        </FieldLabel>
+        <FieldLabel label="Next Follow-up Date (Auto)">
+          <div className={`${inputClasses} flex items-center bg-surface-soft text-muted`}>
+            {isTerminalOutcome(outcome)
+              ? "No next follow-up"
+              : `${formatDate(followup.nextFollowupDate, "Recalculated after save")}`}
+          </div>
+        </FieldLabel>
+        <FieldLabel label="Override Next Follow-up">
+          <div className="space-y-2">
+            <label className={`${inputClasses} flex cursor-pointer items-center justify-between gap-3`}>
+              <span className="text-sm font-semibold">Use manual date</span>
+              <input
+                type="checkbox"
+                checked={overrideNextDate}
+                disabled={isTerminalOutcome(outcome)}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setOverrideNextDate(checked);
+                  if (checked && !overrideNextFollowupDate) {
+                    setOverrideNextFollowupDate(followup.nextFollowupDate);
+                  }
+                }}
+              />
+            </label>
+            {overrideNextDate && !isTerminalOutcome(outcome) ? (
+              <input
+                type="date"
+                className={inputClasses}
+                value={overrideNextFollowupDate}
+                onChange={(event) => setOverrideNextFollowupDate(event.target.value)}
+              />
+            ) : (
+              <p className="text-xs font-semibold text-muted">
+                Auto schedule is used unless manual date is enabled.
+              </p>
+            )}
+          </div>
         </FieldLabel>
       </div>
 
